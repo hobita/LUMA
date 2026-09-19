@@ -28,6 +28,9 @@ export function useWebRTC({
   const [micActive, setMicActive] = useState(true);
   const [videoActive, setVideoActive] = useState(true);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [isMovieStreaming, setIsMovieStreaming] = useState(false);
+  const [remoteMovieStream, setRemoteMovieStream] = useState<MediaStream | null>(null);
+  const [remoteMovieTitle, setRemoteMovieTitle] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
 
   // Reactive streams: when these change, the component rebinds srcObject
@@ -47,6 +50,10 @@ export function useWebRTC({
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenSenderRef = useRef<RTCRtpSender | null>(null);
+  const movieStreamRef = useRef<MediaStream | null>(null);
+  const movieSendersRef = useRef<RTCRtpSender[]>([]);
+  const remoteMovieStreamIdRef = useRef<string | null>(null);
+  const isNegotiatingRef = useRef<boolean>(false);
   // Track IDs of the first remote video stream (camera) to distinguish from screen
   const remoteVideoStreamIdRef = useRef<string | null>(null);
   const bufferedCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
@@ -146,12 +153,30 @@ export function useWebRTC({
       });
     }
 
-    // Handle remote tracks — distinguish camera vs screen
+    // Handle remote tracks — distinguish camera vs screen vs movie stream
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
       if (!remoteStream) return;
 
       const track = event.track;
+
+      // 1. Is this the partner's Movie Stream?
+      if (
+        remoteMovieStreamIdRef.current &&
+        (remoteStream.id === remoteMovieStreamIdRef.current ||
+          remoteStream.id.includes("movie"))
+      ) {
+        setRemoteMovieStream(remoteStream);
+        track.onended = () => {
+          if (remoteStream.getTracks().every((t) => t.readyState === "ended")) {
+            setRemoteMovieStream(null);
+          }
+        };
+        setHasRemoteMedia(true);
+        return;
+      }
+
+      // 2. Video Tracks: Camera vs Screen Share
       if (track.kind === "video") {
         if (!remoteVideoStreamIdRef.current) {
           // First video stream = camera
@@ -161,23 +186,31 @@ export function useWebRTC({
             remoteVideoRef.current.srcObject = remoteStream;
           }
         } else if (remoteStream.id !== remoteVideoStreamIdRef.current) {
-          // Second video stream = screen share
-          setRemoteScreenStream(remoteStream);
+          // Check if this might be a movie stream that arrived before the signaling message
+          if (remoteMovieStreamIdRef.current && remoteStream.id === remoteMovieStreamIdRef.current) {
+            setRemoteMovieStream(remoteStream);
+          } else {
+            // Second video stream = screen share
+            setRemoteScreenStream(remoteStream);
 
-          // When the screen track ends, clear the screen stream
-          track.onended = () => {
-            setRemoteScreenStream(null);
-          };
-          // Also handle track removal via mute
-          track.onmute = () => {
-            setRemoteScreenStream(null);
-          };
+            track.onended = () => {
+              setRemoteScreenStream(null);
+            };
+            track.onmute = () => {
+              setRemoteScreenStream(null);
+            };
+          }
         }
-      } else if (track.kind === "audio" && !remoteVideoStreamIdRef.current) {
-        // Audio-only case: still mark as having remote media
-        setRemoteDisplayStream(remoteStream);
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
+      } else if (track.kind === "audio") {
+        // If it's part of the movie stream
+        if (remoteMovieStreamIdRef.current && remoteStream.id === remoteMovieStreamIdRef.current) {
+          setRemoteMovieStream(remoteStream);
+        } else if (!remoteVideoStreamIdRef.current) {
+          // Audio-only case for camera/call
+          setRemoteDisplayStream(remoteStream);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+          }
         }
       }
       setHasRemoteMedia(true);
@@ -209,6 +242,31 @@ export function useWebRTC({
     };
 
     return pc;
+  }, [broadcastSignaling, currentUserId]);
+
+  // WebRTC Perfect Renegotiation: triggers offer/answer cycle when tracks change
+  const renegotiate = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc) return;
+
+    try {
+      if (isNegotiatingRef.current || pc.signalingState !== "stable") return;
+      isNegotiatingRef.current = true;
+
+      const offer = await pc.createOffer();
+      if (pc.signalingState !== "stable") return;
+
+      await pc.setLocalDescription(offer);
+      broadcastSignaling({
+        type: "offer",
+        senderId: currentUserId,
+        sdp: offer.sdp,
+      });
+    } catch (err) {
+      console.warn("WebRTC renegotiation offer error:", err);
+    } finally {
+      isNegotiatingRef.current = false;
+    }
   }, [broadcastSignaling, currentUserId]);
 
   // Initiate WebRTC Offer
@@ -253,6 +311,18 @@ export function useWebRTC({
         return;
       }
 
+      if (payload.type === "movie_stream_state" && payload.movieState) {
+        if (payload.movieState.active) {
+          remoteMovieStreamIdRef.current = payload.movieState.streamId;
+          setRemoteMovieTitle(payload.movieState.title);
+        } else {
+          remoteMovieStreamIdRef.current = null;
+          setRemoteMovieTitle(null);
+          setRemoteMovieStream(null);
+        }
+        return;
+      }
+
       if (payload.type === "peer_ready") {
         // Partner is ready: if we are the owner or ready, start call
         if (isInitiatorRef.current) {
@@ -264,6 +334,17 @@ export function useWebRTC({
       if (payload.type === "offer" && payload.sdp) {
         await initLocalMedia();
         const pc = createPeerConnection();
+
+        // Handle offer collision (glare)
+        if (pc.signalingState !== "stable") {
+          if (!isInitiatorRef.current) {
+            // Polite peer rolls back local offer to accept partner's offer
+            await pc.setLocalDescription({ type: "rollback" });
+          } else {
+            // Impolite peer ignores colliding offer
+            return;
+          }
+        }
 
         await pc.setRemoteDescription(
           new RTCSessionDescription({ type: "offer", sdp: payload.sdp })
@@ -365,6 +446,12 @@ export function useWebRTC({
         localStreamRef.current.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
       }
+
+      // Stop movie stream tracks on unmount
+      if (movieStreamRef.current) {
+        movieStreamRef.current.getTracks().forEach((track) => track.stop());
+        movieStreamRef.current = null;
+      }
     };
   }, [slug, currentUserId, initLocalMedia, handleSignaling, broadcastSignaling]);
 
@@ -430,7 +517,7 @@ export function useWebRTC({
       screenTrackRef.current = null;
     }
 
-    // Remove the screen sender from the peer connection (don't touch camera sender)
+    // Remove the screen sender from the peer connection
     const pc = pcRef.current;
     if (pc && screenSenderRef.current) {
       try {
@@ -460,7 +547,9 @@ export function useWebRTC({
         screenSharing: false,
       },
     });
-  }, [broadcastSignaling, currentUserId, micActive, videoActive]);
+
+    await renegotiate();
+  }, [broadcastSignaling, currentUserId, micActive, videoActive, renegotiate]);
 
   const stopScreenSharingRef = useRef(stopScreenSharing);
   useEffect(() => {
@@ -506,6 +595,9 @@ export function useWebRTC({
           },
         });
 
+        // Trigger renegotiation for screen sharing track
+        await renegotiate();
+
         // When user stops sharing via browser native UI banner
         screenTrack.onended = () => {
           stopScreenSharingRef.current();
@@ -516,7 +608,84 @@ export function useWebRTC({
     } else {
       stopScreenSharingRef.current();
     }
-  }, [screenSharing, broadcastSignaling, currentUserId, micActive, videoActive]);
+  }, [screenSharing, broadcastSignaling, currentUserId, micActive, videoActive, renegotiate]);
+
+  // Start Cinema Movie Streaming: broadcast local video element stream to partner
+  const startMovieStream = useCallback(
+    async (stream: MediaStream, title: string) => {
+      const pc = createPeerConnection();
+      if (!pc) return;
+
+      // Clean up previous movie senders if any
+      movieSendersRef.current.forEach((sender) => {
+        try {
+          pc.removeTrack(sender);
+        } catch {}
+      });
+      movieSendersRef.current = [];
+
+      movieStreamRef.current = stream;
+
+      // Add all tracks (video + audio) from the captured movie
+      stream.getTracks().forEach((track) => {
+        try {
+          const sender = pc.addTrack(track, stream);
+          movieSendersRef.current.push(sender);
+        } catch (e) {
+          console.warn("Error adding movie track:", e);
+        }
+      });
+
+      setIsMovieStreaming(true);
+
+      // Notify partner of movie stream
+      broadcastSignaling({
+        type: "movie_stream_state",
+        senderId: currentUserId,
+        movieState: {
+          active: true,
+          title,
+          streamId: stream.id,
+        },
+      });
+
+      // Renegotiate immediately so partner receives the stream
+      await renegotiate();
+    },
+    [createPeerConnection, broadcastSignaling, currentUserId, renegotiate]
+  );
+
+  // Stop Cinema Movie Streaming
+  const stopMovieStream = useCallback(async () => {
+    const pc = pcRef.current;
+    if (pc) {
+      movieSendersRef.current.forEach((sender) => {
+        try {
+          pc.removeTrack(sender);
+        } catch {}
+      });
+      movieSendersRef.current = [];
+    }
+
+    if (movieStreamRef.current) {
+      movieStreamRef.current.getTracks().forEach((t) => t.stop());
+      movieStreamRef.current = null;
+    }
+
+    setIsMovieStreaming(false);
+
+    broadcastSignaling({
+      type: "movie_stream_state",
+      senderId: currentUserId,
+      movieState: {
+        active: false,
+        title: "",
+        streamId: "",
+      },
+    });
+
+    await renegotiate();
+  }, [broadcastSignaling, currentUserId, renegotiate]);
 
   return {
     localVideoRef,
@@ -524,6 +693,9 @@ export function useWebRTC({
     localDisplayStream,
     remoteDisplayStream,
     remoteScreenStream,
+    remoteMovieStream,
+    remoteMovieTitle,
+    isMovieStreaming,
     connectionState,
     hasRemoteMedia,
     micActive,
@@ -534,6 +706,8 @@ export function useWebRTC({
     toggleMic,
     toggleVideo,
     toggleScreenShare,
+    startMovieStream,
+    stopMovieStream,
     startCall,
   };
 }

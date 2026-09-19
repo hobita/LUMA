@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   X,
   Tv,
@@ -11,6 +11,9 @@ import {
   Search,
   FolderUp,
   MonitorUp,
+  Radio,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
 declare global {
@@ -56,6 +59,9 @@ interface WatchPlayerProps {
   videoId: string | null;
   videoTitle: string;
   localMedia?: LocalMediaInfo | null;
+  remoteMovieStream?: MediaStream | null;
+  remoteMovieTitle?: string | null;
+  isMovieStreaming?: boolean;
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
   onSeek: (currentTime: number) => void;
@@ -64,6 +70,8 @@ interface WatchPlayerProps {
   onSelectLocalFile?: (file: File) => void;
   onOpenYouTubeBrowser?: () => void;
   onTriggerScreenShare?: () => void;
+  onStartMovieStream?: (stream: MediaStream, title: string) => void;
+  onStopMovieStream?: () => void;
   registerPlayer: (controller: {
     play: () => void;
     pause: () => void;
@@ -95,6 +103,9 @@ export function WatchPlayer({
   videoId,
   videoTitle,
   localMedia,
+  remoteMovieStream,
+  remoteMovieTitle,
+  isMovieStreaming,
   onPlay,
   onPause,
   onSeek,
@@ -103,15 +114,85 @@ export function WatchPlayer({
   onSelectLocalFile,
   onOpenYouTubeBrowser,
   onTriggerScreenShare,
+  onStartMovieStream,
+  onStopMovieStream,
   registerPlayer,
 }: WatchPlayerProps) {
   const [customUrl, setCustomUrl] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(!videoId && !localMedia);
+  const [pickerOpen, setPickerOpen] = useState(!videoId && !localMedia && !remoteMovieStream);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const playerRef = useRef<YTPlayer | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteMovieVideoRef = useRef<HTMLVideoElement | null>(null);
   const localFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Register HTML5 local video controller
+  // Capture host's local video stream and broadcast to partner via WebRTC
+  useEffect(() => {
+    if (!localMedia || !onStartMovieStream) return;
+
+    let isCancelled = false;
+    let streamCaptured: MediaStream | null = null;
+
+    function attemptCapture() {
+      const videoEl = localVideoRef.current;
+      if (!videoEl || isCancelled) return;
+
+      try {
+        let stream: MediaStream | null = null;
+        if (typeof (videoEl as any).captureStream === "function") {
+          stream = (videoEl as any).captureStream();
+        } else if (typeof (videoEl as any).mozCaptureStream === "function") {
+          stream = (videoEl as any).mozCaptureStream();
+        }
+
+        if (stream && stream.getVideoTracks().length > 0) {
+          streamCaptured = stream;
+          if (onStartMovieStream) {
+            onStartMovieStream(stream, localMedia?.name || "Shared Film");
+          }
+        }
+      } catch (err) {
+        console.warn("Could not capture video stream for partner:", err);
+      }
+    }
+
+    const videoEl = localVideoRef.current;
+    if (videoEl) {
+      if (videoEl.readyState >= 1) {
+        attemptCapture();
+      } else {
+        videoEl.addEventListener("loadedmetadata", attemptCapture, { once: true });
+        videoEl.addEventListener("canplay", attemptCapture, { once: true });
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+      if (onStopMovieStream) {
+        onStopMovieStream();
+      }
+      if (streamCaptured) {
+        streamCaptured.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [localMedia, onStartMovieStream, onStopMovieStream]);
+
+  // Callback ref for remote movie stream player (partner)
+  const remoteMovieVideoCallbackRef = useCallback(
+    (el: HTMLVideoElement | null) => {
+      remoteMovieVideoRef.current = el;
+      if (el && remoteMovieStream) {
+        el.srcObject = remoteMovieStream;
+        el.play().catch(() => {
+          // Autoplay with audio was blocked by browser policy without user gesture
+          setAudioBlocked(true);
+        });
+      }
+    },
+    [remoteMovieStream]
+  );
+
+  // Register HTML5 local video controller for Host
   useEffect(() => {
     if (localMedia) {
       registerPlayer({
@@ -130,6 +211,35 @@ export function WatchPlayer({
       });
     }
   }, [localMedia, registerPlayer]);
+
+  // Register remote movie stream controller for Partner
+  useEffect(() => {
+    if (remoteMovieStream && !localMedia) {
+      registerPlayer({
+        play: () => {
+          remoteMovieVideoRef.current?.play().catch(() => {});
+        },
+        pause: () => {
+          remoteMovieVideoRef.current?.pause();
+        },
+        seekTo: (seconds: number) => {
+          if (remoteMovieVideoRef.current) {
+            remoteMovieVideoRef.current.currentTime = seconds;
+          }
+        },
+        getCurrentTime: () => remoteMovieVideoRef.current?.currentTime || 0,
+      });
+    }
+  }, [remoteMovieStream, localMedia, registerPlayer]);
+
+  // Handle unmute click if browser blocked autoplay with sound
+  function handleUnmuteClick() {
+    if (remoteMovieVideoRef.current) {
+      remoteMovieVideoRef.current.muted = false;
+      remoteMovieVideoRef.current.play().catch(() => {});
+      setAudioBlocked(false);
+    }
+  }
 
   // Parse YouTube URL to Video ID
   function extractYouTubeId(url: string): string | null {
@@ -246,16 +356,32 @@ export function WatchPlayer({
       <div className="px-5 py-3 border-b border-white/[0.08] flex items-center justify-between z-20 bg-[#12121A]/80 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-            {localMedia ? <FolderUp className="w-4 h-4" /> : <Tv className="w-4 h-4" />}
+            {localMedia || remoteMovieStream ? (
+              <Film className="w-4 h-4 text-rose-400" />
+            ) : (
+              <Tv className="w-4 h-4 text-purple-400" />
+            )}
           </div>
           <div className="min-w-0">
             <div className="text-xs font-semibold text-white truncate max-w-sm">
-              {localMedia?.name || videoTitle || "Watch Together"}
+              {localMedia?.name ||
+                remoteMovieTitle ||
+                (videoId === "local" ? videoTitle : null) ||
+                videoTitle ||
+                "Watch Together"}
             </div>
-            <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+            <div className="text-[10px] text-zinc-400 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span>
-                {localMedia ? "Local File • Realtime Synchronized" : "Realtime Playback Synchronized"}
+                {localMedia
+                  ? isMovieStreaming
+                    ? "📡 Live HD Cinema • Streaming to Partner"
+                    : "Local File • Direct Playback"
+                  : remoteMovieStream
+                  ? "🎬 Live Cinema Stream • From Partner's Device"
+                  : videoId === "local"
+                  ? "Connecting to Partner's Stream..."
+                  : "Realtime Playback Synchronized"}
               </span>
             </div>
           </div>
@@ -267,10 +393,10 @@ export function WatchPlayer({
             <button
               onClick={() => localFileInputRef.current?.click()}
               className="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-xs text-purple-300 hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
-              title="Upload / Change Local Media"
+              title="Upload / Change Film"
             >
               <FolderUp className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Upload Media</span>
+              <span className="hidden sm:inline">Upload Film</span>
             </button>
           )}
 
@@ -309,7 +435,7 @@ export function WatchPlayer({
       {/* Main Video Display Area */}
       <div className="relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden">
         {localMedia?.url ? (
-          /* HTML5 Video Player for Local Device Uploads */
+          /* HTML5 Video Player for Local Device Uploads (Host Side) */
           <div className="relative w-full h-full flex items-center justify-center bg-black">
             <video
               ref={localVideoRef}
@@ -334,34 +460,96 @@ export function WatchPlayer({
                 }
               }}
             />
+            {/* Live Streaming Badge on Host Player */}
+            <div className="absolute top-4 left-4 z-20 pointer-events-none flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-purple-500/30 text-xs text-purple-200 shadow-xl">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-medium text-white">Live Broadcast</span>
+              <span className="text-zinc-400">• Partner is Watching</span>
+            </div>
+          </div>
+        ) : remoteMovieStream ? (
+          /* Live WebRTC Cinema Player for Partner (No File Needed on Partner Device!) */
+          <div className="relative w-full h-full flex items-center justify-center bg-black">
+            <video
+              ref={remoteMovieVideoCallbackRef}
+              autoPlay
+              playsInline
+              controls
+              className="w-full h-full object-contain"
+              onPlay={() => {
+                if (remoteMovieVideoRef.current) {
+                  onPlay(remoteMovieVideoRef.current.currentTime);
+                }
+              }}
+              onPause={() => {
+                if (remoteMovieVideoRef.current) {
+                  onPause(remoteMovieVideoRef.current.currentTime);
+                }
+              }}
+              onSeeked={() => {
+                if (remoteMovieVideoRef.current) {
+                  onSeek(remoteMovieVideoRef.current.currentTime);
+                }
+              }}
+            />
+
+            {/* Live Cinema Badge */}
+            <div className="absolute top-4 left-4 z-20 pointer-events-none flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-rose-500/30 text-xs text-rose-200 shadow-xl">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              <span className="font-medium text-white">Live Cinema Stream</span>
+              <span className="text-zinc-400">• From Partner&apos;s Device</span>
+            </div>
+
+            {/* Autoplay Sound Prompt if blocked by browser policy */}
+            {audioBlocked && (
+              <button
+                onClick={handleUnmuteClick}
+                className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 px-5 py-2.5 rounded-full bg-gradient-to-r from-purple-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 text-white text-xs font-semibold shadow-2xl backdrop-blur-md flex items-center gap-2 transition-all hover:scale-105 active:scale-95 animate-bounce"
+              >
+                <Volume2 className="w-4 h-4 text-emerald-300" />
+                <span>Click to Enable Theater Sound</span>
+              </button>
+            )}
           </div>
         ) : videoId && videoId !== "local" ? (
           /* YouTube Player */
           <div id="luma-youtube-player" className="w-full h-full" />
         ) : videoId === "local" ? (
-          /* Partner broadcasted local video, but current client hasn't picked their file */
+          /* Partner broadcasted local video, and movie stream is negotiating */
           <div className="flex flex-col items-center justify-center text-center p-8 max-w-md">
-            <div className="w-16 h-16 rounded-3xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center mb-4 text-purple-300 shadow-xl shadow-purple-900/30">
-              <FolderUp className="w-8 h-8" />
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-purple-600/30 to-rose-600/30 border border-purple-500/40 flex items-center justify-center mb-5 text-purple-300 shadow-2xl shadow-purple-900/40 relative">
+              <Film className="w-10 h-10 text-rose-400 animate-pulse" />
+              <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-purple-500" />
+              </span>
             </div>
-            <h3 className="text-base font-semibold text-white">Partner is playing a local video</h3>
-            <p className="text-xs text-zinc-400 mt-1.5 mb-6 leading-relaxed">
-              {videoTitle ? `"${videoTitle}"` : "A media file from their device"}. Select your copy to watch in synchronized full HD, or ask them to screen share.
+            <h3 className="text-lg font-semibold text-white">Connecting to Partner&apos;s Cinema Stream</h3>
+            <p className="text-xs text-zinc-400 mt-2 mb-6 leading-relaxed max-w-sm">
+              Your partner is streaming{" "}
+              <span className="text-purple-300 font-medium">
+                {videoTitle ? `"${videoTitle}"` : "a film"}
+              </span>{" "}
+              from their device. You will see and hear it in full HD in a few seconds.
             </p>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-200 text-xs shadow-sm mb-4">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+              <span>Securing Encrypted P2P Movie Stream...</span>
+            </div>
             <div className="flex flex-col sm:flex-row gap-3 w-full">
               <button
                 onClick={() => localFileInputRef.current?.click()}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-all shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-medium border border-white/10 transition-all flex items-center justify-center gap-2"
               >
-                <FolderUp className="w-4 h-4" />
-                <span>Select My Copy</span>
+                <FolderUp className="w-4 h-4 text-purple-400" />
+                <span>Select My Copy Instead</span>
               </button>
               {onTriggerScreenShare && (
                 <button
                   onClick={onTriggerScreenShare}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white text-xs font-medium border border-white/10 transition-all flex items-center justify-center gap-2"
                 >
-                  <MonitorUp className="w-4 h-4 text-purple-400" />
+                  <MonitorUp className="w-4 h-4 text-rose-400" />
                   <span>Screen Share</span>
                 </button>
               )}
@@ -373,7 +561,7 @@ export function WatchPlayer({
             <Sparkles className="w-10 h-10 text-purple-400 mb-3 animate-pulse" />
             <h3 className="text-base font-semibold text-white">Choose something to watch together</h3>
             <p className="text-xs text-zinc-500 max-w-xs mt-1">
-              Search YouTube songs or choose a video from your device to watch together.
+              Search YouTube songs or upload a film from your device to watch together.
             </p>
           </div>
         )}

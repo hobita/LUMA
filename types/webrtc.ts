@@ -3,7 +3,8 @@ export type SignalingMessageType =
   | "answer"
   | "candidate"
   | "media_state"
-  | "peer_ready";
+  | "peer_ready"
+  | "movie_stream_state";
 
 export interface SignalingPayload {
   type: SignalingMessageType;
@@ -14,6 +15,11 @@ export interface SignalingPayload {
     micActive: boolean;
     videoActive: boolean;
     screenSharing: boolean;
+  };
+  movieState?: {
+    active: boolean;
+    title: string;
+    streamId: string;
   };
 }
 

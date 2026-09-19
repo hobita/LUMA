@@ -91,6 +91,9 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
     localDisplayStream,
     remoteDisplayStream,
     remoteScreenStream,
+    remoteMovieStream,
+    remoteMovieTitle,
+    isMovieStreaming,
     connectionState,
     hasRemoteMedia,
     micActive,
@@ -101,6 +104,8 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
     toggleMic,
     toggleVideo,
     toggleScreenShare,
+    startMovieStream,
+    stopMovieStream,
   } = useWebRTC({
     slug: room.slug,
     currentUserId,
@@ -174,8 +179,9 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
       URL.revokeObjectURL(localMedia.url);
     }
     setLocalMedia(null);
+    stopMovieStream();
     closeWatch();
-  }, [localMedia, closeWatch]);
+  }, [localMedia, closeWatch, stopMovieStream]);
 
   function copyInvite() {
     if (typeof window !== "undefined") {
@@ -323,6 +329,9 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
                 videoId={watchState.videoId}
                 videoTitle={watchState.videoTitle}
                 localMedia={localMedia}
+                remoteMovieStream={remoteMovieStream}
+                remoteMovieTitle={remoteMovieTitle}
+                isMovieStreaming={isMovieStreaming}
                 onPlay={syncPlay}
                 onPause={syncPause}
                 onSeek={syncSeek}
@@ -332,11 +341,14 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
                     URL.revokeObjectURL(localMedia.url);
                     setLocalMedia(null);
                   }
+                  stopMovieStream();
                   loadVideo(id, title);
                 }}
                 onSelectLocalFile={handleSelectLocalMedia}
                 onOpenYouTubeBrowser={() => setYoutubeBrowserOpen(true)}
                 onTriggerScreenShare={toggleScreenShare}
+                onStartMovieStream={startMovieStream}
+                onStopMovieStream={stopMovieStream}
                 registerPlayer={registerPlayer}
               />
             )}
