@@ -7,11 +7,19 @@ import { WatchEventPayload, WatchState } from "@/types/watch";
 export function useWatchTogether(slug: string, currentUserId: string) {
   const [watchState, setWatchState] = useState<WatchState>({
     isActive: false,
+    activeMode: null,
     videoId: null,
     videoTitle: "",
     isPlaying: false,
     currentTime: 0,
+    gameType: null,
+    gameTitle: "",
   });
+
+  const [lastRemoteGameMove, setLastRemoteGameMove] = useState<{
+    action: string;
+    data: Record<string, unknown>;
+  } | null>(null);
 
   const supabaseRef = useRef(createClient());
   const channelRef = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
@@ -61,11 +69,33 @@ export function useWatchTogether(slug: string, currentUserId: string) {
       case "LOAD_VIDEO":
         setWatchState({
           isActive: true,
+          activeMode: "video",
           videoId: payload.videoId || null,
           videoTitle: payload.title || "Shared Video",
           isPlaying: false,
           currentTime: 0,
+          gameType: null,
+          gameTitle: "",
         });
+        break;
+
+      case "LOAD_GAME":
+        setWatchState({
+          isActive: true,
+          activeMode: "game",
+          videoId: null,
+          videoTitle: "",
+          isPlaying: false,
+          currentTime: 0,
+          gameType: payload.gameType || "heart_tac_toe",
+          gameTitle: payload.title || "Couple Game",
+        });
+        break;
+
+      case "GAME_MOVE":
+        if (payload.gameMove) {
+          setLastRemoteGameMove(payload.gameMove);
+        }
         break;
 
       case "PLAY":
@@ -75,7 +105,6 @@ export function useWatchTogether(slug: string, currentUserId: string) {
           currentTime: payload.currentTime ?? prev.currentTime,
         }));
         if (playerControllerRef.current) {
-          // Drift check
           if (payload.currentTime !== undefined) {
             const current = playerControllerRef.current.getCurrentTime();
             if (Math.abs(current - payload.currentTime) > 1.5) {
@@ -113,12 +142,16 @@ export function useWatchTogether(slug: string, currentUserId: string) {
         break;
 
       case "CLOSE_WATCH":
+      case "CLOSE_GAME":
         setWatchState({
           isActive: false,
+          activeMode: null,
           videoId: null,
           videoTitle: "",
           isPlaying: false,
           currentTime: 0,
+          gameType: null,
+          gameTitle: "",
         });
         break;
     }
@@ -156,10 +189,13 @@ export function useWatchTogether(slug: string, currentUserId: string) {
     (videoId: string, title = "Shared Video") => {
       setWatchState({
         isActive: true,
+        activeMode: "video",
         videoId,
         videoTitle: title,
         isPlaying: false,
         currentTime: 0,
+        gameType: null,
+        gameTitle: "",
       });
 
       broadcastWatchEvent({
@@ -167,6 +203,40 @@ export function useWatchTogether(slug: string, currentUserId: string) {
         senderId: currentUserId,
         videoId,
         title,
+      });
+    },
+    [broadcastWatchEvent, currentUserId]
+  );
+
+  const loadGame = useCallback(
+    (gameType: "heart_tac_toe" | "connect_four" | "deep_talk", title = "Couple Game") => {
+      setWatchState({
+        isActive: true,
+        activeMode: "game",
+        videoId: null,
+        videoTitle: "",
+        isPlaying: false,
+        currentTime: 0,
+        gameType,
+        gameTitle: title,
+      });
+
+      broadcastWatchEvent({
+        type: "LOAD_GAME",
+        senderId: currentUserId,
+        gameType,
+        title,
+      });
+    },
+    [broadcastWatchEvent, currentUserId]
+  );
+
+  const sendGameMove = useCallback(
+    (gameMove: { action: string; data: Record<string, unknown> }) => {
+      broadcastWatchEvent({
+        type: "GAME_MOVE",
+        senderId: currentUserId,
+        gameMove,
       });
     },
     [broadcastWatchEvent, currentUserId]
@@ -214,10 +284,13 @@ export function useWatchTogether(slug: string, currentUserId: string) {
   const closeWatch = useCallback(() => {
     setWatchState({
       isActive: false,
+      activeMode: null,
       videoId: null,
       videoTitle: "",
       isPlaying: false,
       currentTime: 0,
+      gameType: null,
+      gameTitle: "",
     });
     broadcastWatchEvent({
       type: "CLOSE_WATCH",
@@ -240,6 +313,9 @@ export function useWatchTogether(slug: string, currentUserId: string) {
   return {
     watchState,
     loadVideo,
+    loadGame,
+    sendGameMove,
+    lastRemoteGameMove,
     syncPlay,
     syncPause,
     syncSeek,

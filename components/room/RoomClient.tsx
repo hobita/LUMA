@@ -29,6 +29,9 @@ import { ChatDrawer } from "@/components/chat/ChatDrawer";
 import { FloatingReactions } from "@/components/reactions/FloatingReactions";
 import { ReactionPicker } from "@/components/reactions/ReactionPicker";
 import { WatchPlayer } from "@/components/watch/WatchPlayer";
+import { MediaSelectorModal } from "@/components/media/MediaSelectorModal";
+import { CoupleGames } from "@/components/games/CoupleGames";
+import { Film } from "lucide-react";
 
 interface RoomClientProps {
   room: Room;
@@ -39,6 +42,7 @@ interface RoomClientProps {
 export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mediaModalOpen, setMediaModalOpen] = useState(false);
 
   // 1. Realtime Presence
   const { partnerOnline, isConnected } = usePresence(
@@ -101,10 +105,13 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
     [remoteVideoRef, remoteDisplayStream]
   );
 
-  // 5. Watch Together Synchronized Media
+  // 5. Watch Together Synchronized Media & Games
   const {
     watchState,
     loadVideo,
+    loadGame,
+    sendGameMove,
+    lastRemoteGameMove,
     syncPlay,
     syncPause,
     syncSeek,
@@ -167,12 +174,13 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
         {/* Presence & Media Connection Indicators */}
         <div className="flex items-center gap-3">
           {/* Watch Status Pill (if watching) */}
-          {watchState.isActive && (
-            <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/30 text-xs text-purple-300">
-              <Tv className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-              <span>Cinema Mode</span>
-            </div>
-          )}
+          <button
+            onClick={() => setMediaModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-600/25 hover:bg-purple-600/40 border border-purple-500/35 text-xs text-purple-200 hover:text-white transition-all shadow-sm"
+          >
+            <Film className="w-3.5 h-3.5 text-rose-400" />
+            <span>{watchState.isActive ? (watchState.gameTitle || watchState.videoTitle || "Media Hub") : "Select Media"}</span>
+          </button>
 
           {/* WebRTC State Pill */}
           <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel-subtle text-xs">
@@ -221,19 +229,30 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
       {/* Main Content Area: Conditional Cinema vs Dual Video Grid */}
       <main className="relative z-10 flex-1 px-6 py-2 flex items-center justify-center">
         {watchState.isActive ? (
-          /* CINEMA MODE: Center Stage Video + Floating PiP Webcams */
+          /* CINEMA MODE: Center Stage Video or Game + Floating PiP Webcams */
           <div className="relative w-full max-w-6xl h-full max-h-[74vh] flex items-center justify-center">
-            {/* Center Shared Video */}
-            <WatchPlayer
-              videoId={watchState.videoId}
-              videoTitle={watchState.videoTitle}
-              onPlay={syncPlay}
-              onPause={syncPause}
-              onSeek={syncSeek}
-              onClose={closeWatch}
-              onSelectVideo={(id, title) => loadVideo(id, title)}
-              registerPlayer={registerPlayer}
-            />
+            {/* Center Shared Video or Game */}
+            {watchState.activeMode === "game" && watchState.gameType ? (
+              <CoupleGames
+                gameType={watchState.gameType}
+                currentUserId={currentUserId}
+                userRole={userRole}
+                onSendGameMove={sendGameMove}
+                lastRemoteMove={lastRemoteGameMove}
+                onCloseGame={closeWatch}
+              />
+            ) : (
+              <WatchPlayer
+                videoId={watchState.videoId}
+                videoTitle={watchState.videoTitle}
+                onPlay={syncPlay}
+                onPause={syncPause}
+                onSeek={syncSeek}
+                onClose={closeWatch}
+                onSelectVideo={(id, title) => loadVideo(id, title)}
+                registerPlayer={registerPlayer}
+              />
+            )}
 
             {/* Floating Picture-in-Picture Webcams (Top Right, below header controls) */}
             <div className="absolute top-16 right-4 z-30 flex flex-col gap-2 pointer-events-auto">
@@ -497,21 +516,15 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
             <ScreenShare className="w-5 h-5" />
           </button>
 
-          {/* Watch Together Button */}
+          {/* Watch Together & Activities Hub Button */}
           <button
-            onClick={() => {
-              if (watchState.isActive) {
-                closeWatch();
-              } else {
-                loadVideo("L_LUpnjgPso", "Cozy Fireplace with Soft Acoustic Guitar");
-              }
-            }}
+            onClick={() => setMediaModalOpen(true)}
             className={`p-3.5 rounded-2xl transition-all ${
               watchState.isActive
                 ? "bg-gradient-to-r from-purple-600 to-rose-600 text-white shadow-lg shadow-purple-900/50 scale-105"
                 : "bg-white/10 text-white hover:bg-white/20"
             }`}
-            title={watchState.isActive ? "Exit Cinema Mode" : "Watch Together"}
+            title="Select Media & Activities"
           >
             <Tv className="w-5 h-5" />
           </button>
@@ -546,6 +559,15 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
           </Link>
         </div>
       </footer>
+
+      {/* Kosmi-Style Select Media & Activities Modal */}
+      <MediaSelectorModal
+        isOpen={mediaModalOpen}
+        onClose={() => setMediaModalOpen(false)}
+        onSelectYouTube={(id, title) => loadVideo(id, title)}
+        onSelectGame={(gameType, title) => loadGame(gameType, title)}
+        onTriggerScreenShare={toggleScreenShare}
+      />
     </div>
   );
 }
