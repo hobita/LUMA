@@ -379,10 +379,16 @@ export function useWebRTC({
       if (payload.type === "answer" && payload.sdp) {
         const pc = pcRef.current;
         if (pc && pc.signalingState !== "stable") {
-          await pc.setRemoteDescription(
-            new RTCSessionDescription({ type: "answer", sdp: payload.sdp })
-          );
-          flushCandidates();
+          try {
+            await pc.setRemoteDescription(
+              new RTCSessionDescription({ type: "answer", sdp: payload.sdp })
+            );
+            flushCandidates();
+          } catch (e) {
+            // Harmless race: retry loop sent multiple offers, first answer
+            // already moved us to "stable" before this one arrived.
+            console.debug("Ignored stale answer (already stable):", e);
+          }
         }
         return;
       }
@@ -489,7 +495,11 @@ export function useWebRTC({
     attemptConnect();
 
     const timer = setInterval(() => {
-      if (retryCount >= maxRetries) {
+      if (
+        retryCount >= maxRetries ||
+        pcRef.current?.connectionState === "connected" ||
+        pcRef.current?.iceConnectionState === "connected"
+      ) {
         clearInterval(timer);
         return;
       }
