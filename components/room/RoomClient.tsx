@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import {
   Mic,
@@ -43,6 +43,26 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+
+  // Call duration counter
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  function formatDuration(totalSeconds: number): string {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    if (hrs > 0) {
+      return `${hrs}:${pad(mins)}:${pad(secs)}`;
+    }
+    return `${pad(mins)}:${pad(secs)}`;
+  }
 
   // 1. Realtime Presence
   const { partnerOnline, isConnected } = usePresence(
@@ -146,74 +166,94 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
       <div className="pointer-events-none absolute top-10 left-1/4 w-[500px] h-[500px] bg-purple-600/10 blur-[150px] rounded-full" />
       <div className="pointer-events-none absolute bottom-10 right-1/4 w-[500px] h-[500px] bg-rose-600/10 blur-[150px] rounded-full" />
 
-      {/* Top Floating Header */}
-      <header className="relative z-20 w-full px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center glow-rose group-hover:scale-105 transition-transform">
-              <Heart className="w-4 h-4 text-rose-400 fill-rose-500/30" />
-            </div>
-            <span className="text-sm font-semibold tracking-wider text-white">{room.name}</span>
-          </Link>
+      {/* Top Floating Dynamic Island Header */}
+      <header className="relative z-20 w-full px-4 sm:px-8 pt-3 sm:pt-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 rounded-full glass-island flex items-center justify-between shadow-2xl">
+          {/* Left: Sanctuary Logo & Room Slug */}
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard" className="flex items-center gap-2 group">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600/30 to-rose-600/30 border border-purple-500/40 flex items-center justify-center glow-rose group-hover:scale-105 transition-all">
+                <Heart className="w-4 h-4 text-rose-400 fill-rose-500/40 heart-beat" />
+              </div>
+              <span className="text-sm font-bold tracking-tight text-white hidden sm:inline group-hover:text-purple-200 transition-colors">
+                {room.name}
+              </span>
+            </Link>
 
-          <div className="h-4 w-px bg-white/10" />
+            <div className="h-4 w-px bg-white/15 hidden sm:block" />
 
-          {/* Room Code Pill */}
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full glass-panel-subtle text-xs">
-            <span className="font-mono text-zinc-300 font-medium">{room.slug}</span>
+            {/* Room Code Badge with Copy Interaction */}
             <button
               onClick={copyInvite}
-              className="text-zinc-400 hover:text-white transition-colors"
-              title="Copy Room Link"
+              className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs transition-all group"
+              title="Copy Invite Link"
             >
-              {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-zinc-400" />}
+              <span className="font-mono text-zinc-300 group-hover:text-white font-medium">{room.slug}</span>
+              {copied ? (
+                <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold">
+                  <Check className="w-3 h-3" />
+                  <span className="hidden md:inline">Copied!</span>
+                </span>
+              ) : (
+                <Copy className="w-3 h-3 text-zinc-500 group-hover:text-white transition-colors" />
+              )}
             </button>
           </div>
-        </div>
 
-        {/* Presence & Media Connection Indicators */}
-        <div className="flex items-center gap-3">
-          {/* Watch Status Pill (if watching) */}
-          <button
-            onClick={() => setMediaModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-600/25 hover:bg-purple-600/40 border border-purple-500/35 text-xs text-purple-200 hover:text-white transition-all shadow-sm"
-          >
-            <Film className="w-3.5 h-3.5 text-rose-400" />
-            <span>{watchState.isActive ? (watchState.gameTitle || watchState.videoTitle || "Media Hub") : "Select Media"}</span>
-          </button>
-
-          {/* WebRTC State Pill */}
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel-subtle text-xs">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                connectionState === "connected"
-                  ? "bg-emerald-400 animate-pulse"
-                  : partnerOnline
-                  ? "bg-amber-400 animate-ping"
-                  : "bg-zinc-600"
-              }`}
-            />
-            <span
-              className={
-                connectionState === "connected"
-                  ? "text-emerald-300 font-medium"
-                  : partnerOnline
-                  ? "text-amber-300"
-                  : "text-zinc-400"
-              }
-            >
-              {connectionState === "connected"
-                ? "P2P Connected"
-                : partnerOnline
-                ? "Establishing WebRTC..."
-                : "Partner Away"}
+          {/* Center: Call Duration Timer Capsule */}
+          <div className="flex items-center gap-2 px-3.5 py-1 rounded-full bg-black/40 border border-white/10 text-xs text-zinc-300 font-medium shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            <span className="text-zinc-400 hidden md:inline">Together:</span>
+            <span className="font-mono text-white font-semibold tracking-wider">
+              {formatDuration(callDuration)}
             </span>
           </div>
 
-          {/* 2-Person Lock Badge */}
-          <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-xs text-purple-300">
-            <Users className="w-3.5 h-3.5 text-purple-400" />
-            <span>2-Person Lock</span>
+          {/* Right: Media Hub button + WebRTC status + Lock */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMediaModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-purple-600/30 to-rose-600/30 hover:from-purple-600/50 hover:to-rose-600/50 border border-purple-500/40 text-xs font-medium text-purple-200 hover:text-white transition-all shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden sm:inline">
+                {watchState.isActive ? (watchState.gameTitle || watchState.videoTitle || "Activities") : "Media & Games"}
+              </span>
+            </button>
+
+            {/* Connection status pill */}
+            <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-xs">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  connectionState === "connected"
+                    ? "bg-emerald-400 animate-pulse"
+                    : partnerOnline
+                    ? "bg-amber-400 animate-ping"
+                    : "bg-zinc-600"
+                }`}
+              />
+              <span
+                className={
+                  connectionState === "connected"
+                    ? "text-emerald-300 font-medium hidden md:inline"
+                    : partnerOnline
+                    ? "text-amber-300 hidden md:inline"
+                    : "text-zinc-500 hidden md:inline"
+                }
+              >
+                {connectionState === "connected"
+                  ? "P2P Connected"
+                  : partnerOnline
+                  ? "Connecting..."
+                  : "Partner Away"}
+              </span>
+            </div>
+
+            {/* 2-Person Lock */}
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10 text-[11px] text-zinc-400">
+              <Users className="w-3 h-3 text-purple-400" />
+              <span>2P Lock</span>
+            </div>
           </div>
         </div>
       </header>
@@ -298,29 +338,32 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
             </div>
           </div>
         ) : (
-          /* DUAL VIDEO CANVAS MODE (Standard Co-presence) */
-          <div className="w-full max-w-6xl h-full max-h-[74vh] grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* SLOT 1: YOU (Local Stream) */}
-            <div className="relative rounded-3xl overflow-hidden glass-panel border border-white/10 flex flex-col justify-between p-4 bg-[#14141C]/80 shadow-2xl">
+          /* DUAL VIDEO CANVAS MODE (Romantic Aura Co-Presence) */
+          <div className="w-full max-w-6xl h-full max-h-[74vh] grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* SLOT 1: YOU (Local Stream Portal) */}
+            <div className={`relative rounded-3xl overflow-hidden glass-panel border border-white/10 flex flex-col justify-between p-4 bg-[#14141C]/80 shadow-2xl transition-all duration-500 ${
+              videoActive ? "aura-violet-active" : ""
+            }`}>
               <div className="flex items-center justify-between z-20">
-                <span className="px-3 py-1 rounded-full glass-panel text-xs font-medium text-purple-300">
-                  You ({userRole === "owner" ? "Host" : "Partner"})
+                <span className="px-3.5 py-1 rounded-full glass-panel text-xs font-semibold text-purple-200 border border-purple-500/30 flex items-center gap-1.5 shadow-sm">
+                  <span>{userRole === "owner" ? "Host 👑" : "Partner ✨"}</span>
+                  <span className="text-zinc-400 font-normal">(You)</span>
                 </span>
 
                 <div className="flex items-center gap-1.5">
                   {screenSharing && (
-                    <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] flex items-center gap-1">
+                    <span className="px-2.5 py-1 rounded-full bg-purple-500/25 border border-purple-500/40 text-purple-200 text-[11px] flex items-center gap-1 shadow-sm">
                       <MonitorUp className="w-3 h-3" />
-                      <span>Sharing Screen</span>
+                      <span>Screen Active</span>
                     </span>
                   )}
                   {!micActive && (
-                    <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400" title="Mic Muted">
+                    <div className="p-1.5 rounded-xl bg-rose-500/25 border border-rose-500/40 text-rose-300 shadow-sm" title="Mic Muted">
                       <MicOff className="w-3.5 h-3.5" />
                     </div>
                   )}
                   {!videoActive && (
-                    <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400" title="Camera Off">
+                    <div className="p-1.5 rounded-xl bg-rose-500/25 border border-rose-500/40 text-rose-300 shadow-sm" title="Camera Off">
                       <VideoOff className="w-3.5 h-3.5" />
                     </div>
                   )}
@@ -340,48 +383,57 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
                 />
 
                 {!videoActive && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500/20 to-rose-500/20 border border-purple-500/40 flex items-center justify-center glow-violet mb-4">
-                      <Heart className="w-10 h-10 text-purple-300 fill-purple-500/20" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-radial from-purple-900/20 to-transparent">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-purple-600/30 to-rose-600/30 border border-purple-500/40 flex items-center justify-center glow-violet mb-3 relative heart-beat">
+                      <div className="absolute inset-0 rounded-full bg-purple-500/10 blur-xl" />
+                      <Heart className="w-10 h-10 text-purple-300 fill-purple-500/30" />
                     </div>
-                    <span className="text-sm font-medium text-white">Camera Off</span>
-                    <span className="text-xs text-zinc-500 mt-1">
-                      {micActive ? "Microphone active" : "Microphone muted"}
+                    <span className="text-sm font-semibold text-white">Your Camera is Resting</span>
+                    <span className="text-xs text-zinc-400 mt-1 flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${micActive ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
+                      {micActive ? "Microphone streaming" : "Microphone muted"}
                     </span>
                   </div>
                 )}
               </div>
 
               <div className="z-20 text-[11px] text-zinc-400 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>Local Media Feed</span>
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm border border-white/5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Your Stream</span>
                 </span>
-                <span>Channel: {isConnected ? "Active" : "Syncing"}</span>
+                <span className="px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm border border-white/5 text-[10px]">
+                  Encrypted Co-Presence
+                </span>
               </div>
             </div>
 
-            {/* SLOT 2: PARTNER (Remote Stream) */}
-            <div className="relative rounded-3xl overflow-hidden glass-panel border border-white/10 flex flex-col justify-between p-4 bg-[#14141C]/80 shadow-2xl">
+            {/* SLOT 2: PARTNER (Remote Stream Portal) */}
+            <div className={`relative rounded-3xl overflow-hidden glass-panel border border-white/10 flex flex-col justify-between p-4 bg-[#14141C]/80 shadow-2xl transition-all duration-500 ${
+              hasRemoteMedia && remoteMediaState.videoActive ? "aura-rose-active" : ""
+            }`}>
               <div className="flex items-center justify-between z-20">
-                <span className="px-3 py-1 rounded-full glass-panel text-xs font-medium text-rose-300">
-                  Partner
+                <span className="px-3.5 py-1 rounded-full glass-panel text-xs font-semibold text-rose-300 border border-rose-500/30 flex items-center gap-1.5 shadow-sm">
+                  <span>{userRole === "owner" ? "Partner ✨" : "Host 👑"}</span>
+                  <span className="text-zinc-400 font-normal">
+                    ({partnerOnline ? "Connected" : "Waiting"})
+                  </span>
                 </span>
 
                 <div className="flex items-center gap-1.5">
                   {remoteMediaState.screenSharing && (
-                    <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 text-[11px] flex items-center gap-1">
+                    <span className="px-2.5 py-1 rounded-full bg-purple-500/25 border border-purple-500/40 text-purple-200 text-[11px] flex items-center gap-1 shadow-sm">
                       <MonitorUp className="w-3 h-3" />
-                      <span>Sharing Screen</span>
+                      <span>Screen Active</span>
                     </span>
                   )}
                   {!remoteMediaState.micActive && (
-                    <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400" title="Partner Muted">
+                    <div className="p-1.5 rounded-xl bg-rose-500/25 border border-rose-500/40 text-rose-300 shadow-sm" title="Partner Muted">
                       <MicOff className="w-3.5 h-3.5" />
                     </div>
                   )}
                   {!remoteMediaState.videoActive && hasRemoteMedia && (
-                    <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400" title="Partner Video Off">
+                    <div className="p-1.5 rounded-xl bg-rose-500/25 border border-rose-500/40 text-rose-300 shadow-sm" title="Partner Video Off">
                       <VideoOff className="w-3.5 h-3.5" />
                     </div>
                   )}
@@ -400,42 +452,43 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
                 />
 
                 {(!hasRemoteMedia || !remoteMediaState.videoActive) && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-radial from-rose-900/20 to-transparent">
                     {hasRemoteMedia && !remoteMediaState.videoActive ? (
                       <>
-                        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-rose-500/20 to-purple-500/20 border border-rose-500/40 flex items-center justify-center glow-rose mb-4">
+                        <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-rose-600/30 to-purple-600/30 border border-rose-500/40 flex items-center justify-center glow-rose mb-3 relative heart-beat">
                           <Heart className="w-10 h-10 text-rose-300 fill-rose-500/30" />
                         </div>
-                        <span className="text-sm font-medium text-white">Partner Camera Off</span>
-                        <span className="text-xs text-zinc-400 mt-1">
-                          {remoteMediaState.micActive ? "Audio streaming" : "Microphone muted"}
+                        <span className="text-sm font-semibold text-white">Partner&apos;s Camera is Off</span>
+                        <span className="text-xs text-zinc-400 mt-1 flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${remoteMediaState.micActive ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
+                          {remoteMediaState.micActive ? "Audio stream connected" : "Microphone muted"}
                         </span>
                       </>
                     ) : partnerOnline ? (
                       <>
-                        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-rose-500/20 to-purple-500/20 border border-rose-500/40 flex items-center justify-center glow-rose mb-4 animate-pulse">
+                        <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-rose-600/30 to-purple-600/30 border border-rose-500/40 flex items-center justify-center glow-rose mb-3 animate-pulse">
                           <Heart className="w-10 h-10 text-rose-300 fill-rose-500/30" />
                         </div>
-                        <span className="text-sm font-medium text-white">Partner is Online ❤️</span>
+                        <span className="text-sm font-semibold text-white">Partner is Online ❤️</span>
                         <p className="text-xs text-zinc-400 max-w-xs mt-1">
-                          Connecting WebRTC encrypted media tracks...
+                          Securing direct P2P audio & video stream...
                         </p>
                       </>
                     ) : (
                       <>
-                        <div className="w-24 h-24 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center mb-4 relative">
-                          <Sparkles className="w-8 h-8 text-zinc-500 animate-pulse" />
+                        <div className="w-24 h-24 rounded-full bg-white/[0.03] border border-white/10 flex items-center justify-center mb-3 relative">
+                          <Sparkles className="w-10 h-10 text-rose-400 animate-pulse" />
                         </div>
-                        <span className="text-sm font-medium text-zinc-300">Invite Your Partner</span>
-                        <p className="text-xs text-zinc-500 max-w-xs mt-1">
-                          Send your private link. When your partner opens this room, your media streams will connect.
+                        <span className="text-sm font-semibold text-white">Waiting for Your Partner</span>
+                        <p className="text-xs text-zinc-400 max-w-xs mt-1 leading-relaxed">
+                          Send your private sanctuary invite link. Your video streams will connect instantly.
                         </p>
                         <button
                           onClick={copyInvite}
-                          className="mt-4 px-4 py-2 rounded-xl glass-panel text-xs font-medium text-rose-300 hover:text-white hover:bg-white/[0.08] transition-all flex items-center gap-1.5"
+                          className="mt-4 px-5 py-2 rounded-full bg-gradient-to-r from-purple-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 text-white font-medium text-xs shadow-lg shadow-purple-900/40 transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
                         >
                           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copied ? "Link Copied!" : "Copy Private Invite Link"}</span>
+                          <span>{copied ? "Invite Copied!" : "Copy Private Link"}</span>
                         </button>
                       </>
                     )}
@@ -444,7 +497,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
               </div>
 
               <div className="z-20 text-[11px] text-zinc-400 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm border border-white/5">
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
                       connectionState === "connected"
@@ -456,58 +509,70 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
                   />
                   <span>
                     {connectionState === "connected"
-                      ? "Direct P2P Encrypted Stream"
+                      ? "P2P Stream Active"
                       : partnerOnline
-                      ? "Negotiating SDP..."
-                      : "Waiting for connection"}
+                      ? "Handshake Sync..."
+                      : "Waiting for Partner"}
                   </span>
                 </span>
-                <span>{hasRemoteMedia ? "Audio/Video Active" : "No Media"}</span>
+                <span className="px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm border border-white/5 text-[10px]">
+                  {hasRemoteMedia ? "Audio & Video" : "Awaiting Media"}
+                </span>
               </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* Bottom Floating Controls Dock */}
-      <footer className="relative z-20 w-full px-6 py-6 flex flex-col items-center gap-3">
+      {/* Bottom Floating Dynamic Island Controls Dock */}
+      <footer className="relative z-20 w-full px-6 py-5 flex flex-col items-center gap-3">
         {/* Reaction Bar */}
         <ReactionPicker onReact={sendReaction} />
 
-        {/* Main Controls Dock */}
-        <div className="px-5 py-3 rounded-3xl glass-panel glow-violet flex items-center gap-3">
+        {/* Dynamic Island Pill Dock */}
+        <div className="px-6 py-2.5 rounded-full glass-island glow-violet flex items-center gap-3 shadow-2xl">
           {/* Mic Button */}
           <button
             onClick={toggleMic}
-            className={`p-3.5 rounded-2xl transition-all ${
+            className={`relative p-3.5 rounded-full transition-all duration-200 hover:scale-110 active:scale-95 ${
               micActive
                 ? "bg-white/10 text-white hover:bg-white/20"
-                : "bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 ring-1 ring-rose-500/40"
+                : "bg-rose-500/25 text-rose-300 hover:bg-rose-500/35 ring-1 ring-rose-500/50"
             }`}
             title={micActive ? "Mute Microphone" : "Unmute Microphone"}
           >
             {micActive ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+            <span
+              className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-[#120F24] ${
+                micActive ? "bg-emerald-400" : "bg-rose-500"
+              }`}
+            />
           </button>
 
           {/* Video Button */}
           <button
             onClick={toggleVideo}
-            className={`p-3.5 rounded-2xl transition-all ${
+            className={`relative p-3.5 rounded-full transition-all duration-200 hover:scale-110 active:scale-95 ${
               videoActive
                 ? "bg-white/10 text-white hover:bg-white/20"
-                : "bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 ring-1 ring-rose-500/40"
+                : "bg-rose-500/25 text-rose-300 hover:bg-rose-500/35 ring-1 ring-rose-500/50"
             }`}
             title={videoActive ? "Turn Off Camera" : "Turn On Camera"}
           >
             {videoActive ? <VideoIcon className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+            <span
+              className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-[#120F24] ${
+                videoActive ? "bg-purple-400" : "bg-rose-500"
+              }`}
+            />
           </button>
 
           {/* Screen Share Button */}
           <button
             onClick={toggleScreenShare}
-            className={`p-3.5 rounded-2xl transition-all ${
+            className={`p-3.5 rounded-full transition-all duration-200 hover:scale-110 active:scale-95 ${
               screenSharing
-                ? "bg-purple-600 text-white shadow-lg shadow-purple-900/50 scale-105"
+                ? "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-900/50 ring-2 ring-purple-400"
                 : "bg-white/10 text-white hover:bg-white/20"
             }`}
             title={screenSharing ? "Stop Sharing Screen" : "Share Screen"}
@@ -518,29 +583,32 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
           {/* Watch Together & Activities Hub Button */}
           <button
             onClick={() => setMediaModalOpen(true)}
-            className={`p-3.5 rounded-2xl transition-all ${
+            className={`relative p-3.5 rounded-full transition-all duration-200 hover:scale-110 active:scale-95 ${
               watchState.isActive
-                ? "bg-gradient-to-r from-purple-600 to-rose-600 text-white shadow-lg shadow-purple-900/50 scale-105"
+                ? "bg-gradient-to-tr from-purple-600 to-rose-600 text-white shadow-lg shadow-purple-900/50 ring-2 ring-rose-400"
                 : "bg-white/10 text-white hover:bg-white/20"
             }`}
-            title="Select Media & Activities"
+            title="Select Media & Activities Hub"
           >
             <Tv className="w-5 h-5" />
+            {watchState.isActive && (
+              <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-rose-500 ring-2 ring-[#120F24] animate-ping" />
+            )}
           </button>
 
           {/* Chat Toggle */}
           <button
             onClick={() => setChatOpen(!chatOpen)}
-            className={`relative p-3.5 rounded-2xl transition-all ${
+            className={`relative p-3.5 rounded-full transition-all duration-200 hover:scale-110 active:scale-95 ${
               chatOpen
-                ? "bg-purple-600 text-white"
+                ? "bg-purple-600 text-white shadow-lg shadow-purple-900/50"
                 : "bg-white/10 text-white hover:bg-white/20"
             }`}
             title="Room Chat"
           >
             <MessageSquare className="w-5 h-5" />
             {messages.length > 0 && !chatOpen && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-[9px] font-bold flex items-center justify-center text-white">
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-[9px] font-bold flex items-center justify-center text-white ring-2 ring-[#120F24]">
                 {messages.length > 9 ? "9+" : messages.length}
               </span>
             )}
@@ -551,7 +619,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
           {/* Leave Button */}
           <Link
             href="/dashboard"
-            className="p-3.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white transition-all hover:scale-105"
+            className="p-3.5 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white transition-all duration-200 hover:scale-110 active:scale-95 shadow-lg shadow-rose-900/40"
             title="Leave Room"
           >
             <PhoneOff className="w-5 h-5" />
