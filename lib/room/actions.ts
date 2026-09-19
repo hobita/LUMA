@@ -256,7 +256,7 @@ export async function getRoomAccess(slug: string): Promise<RoomAccessResult> {
       return {
         allowed: true,
         status: "ok",
-        room: room as Room,
+        room: { ...room, partner_id: user.id } as Room,
         currentUserId: user.id,
         userRole: "partner",
       };

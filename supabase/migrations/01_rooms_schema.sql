@@ -126,14 +126,14 @@ alter table public.rooms enable row level security;
 alter table public.room_members enable row level security;
 alter table public.messages enable row level security;
 
--- Profiles: Can read own profile and partner profile
+-- Profiles: Can read own profile and partner profile (checked via rooms to prevent recursion)
 create policy "Read own or partner profile"
   on public.profiles for select
   using (
     auth.uid() = id or exists (
-      select 1 from public.room_members rm1
-      join public.room_members rm2 on rm1.room_id = rm2.room_id
-      where rm1.user_id = auth.uid() and rm2.user_id = public.profiles.id
+      select 1 from public.rooms r
+      where (r.owner_id = auth.uid() and r.partner_id = public.profiles.id)
+         or (r.partner_id = auth.uid() and r.owner_id = public.profiles.id)
     )
   );
 
@@ -141,11 +141,13 @@ create policy "Update own profile"
   on public.profiles for update
   using (auth.uid() = id);
 
--- Rooms: Only authorized members can view
-create policy "Members can view room"
+-- Rooms: Members or prospective partners can view active rooms
+create policy "View rooms"
   on public.rooms for select
   using (
-    auth.uid() = owner_id or auth.uid() = partner_id
+    auth.uid() = owner_id
+    or auth.uid() = partner_id
+    or (is_active = true and partner_id is null)
   );
 
 create policy "Authenticated users can create rooms"
@@ -156,35 +158,42 @@ create policy "Owners can update room"
   on public.rooms for update
   using (auth.uid() = owner_id);
 
--- Room Members: Members can view member list for their rooms
-create policy "Members can view room members"
+-- Room Members: Non-recursive policies
+create policy "View room members"
   on public.room_members for select
   using (
-    exists (
-      select 1 from public.room_members rm
-      where rm.room_id = public.room_members.room_id
-      and rm.user_id = auth.uid()
+    user_id = auth.uid()
+    or exists (
+      select 1 from public.rooms r
+      where r.id = public.room_members.room_id
+      and (r.owner_id = auth.uid() or r.partner_id = auth.uid())
     )
+  );
+
+create policy "Insert room members"
+  on public.room_members for insert
+  with check (
+    auth.uid() = user_id
   );
 
 -- Messages: Only room members can read and write messages
-create policy "Members can read room messages"
+create policy "Read room messages"
   on public.messages for select
   using (
     exists (
-      select 1 from public.room_members rm
-      where rm.room_id = public.messages.room_id
-      and rm.user_id = auth.uid()
+      select 1 from public.rooms r
+      where r.id = public.messages.room_id
+      and (r.owner_id = auth.uid() or r.partner_id = auth.uid())
     )
   );
 
-create policy "Members can insert room messages"
+create policy "Insert room messages"
   on public.messages for insert
   with check (
     auth.uid() = sender_id and
     exists (
-      select 1 from public.room_members rm
-      where rm.room_id = public.messages.room_id
-      and rm.user_id = auth.uid()
+      select 1 from public.rooms r
+      where r.id = public.messages.room_id
+      and (r.owner_id = auth.uid() or r.partner_id = auth.uid())
     )
   );
