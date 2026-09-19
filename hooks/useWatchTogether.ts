@@ -232,7 +232,7 @@ export function useWatchTogether(slug: string, currentUserId: string) {
   );
 
   const loadGame = useCallback(
-    (gameType: "heart_tac_toe" | "connect_four" | "deep_talk", title = "Couple Game") => {
+    (gameType: "heart_tac_toe" | "connect_four" | "deep_talk" | "puzzle", title = "Couple Game") => {
       setWatchState({
         isActive: true,
         activeMode: "game",

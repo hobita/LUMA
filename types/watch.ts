@@ -14,7 +14,7 @@ export interface WatchEventPayload {
   videoId?: string;
   currentTime?: number;
   title?: string;
-  gameType?: "heart_tac_toe" | "connect_four" | "deep_talk";
+  gameType?: "heart_tac_toe" | "connect_four" | "deep_talk" | "puzzle";
   gameMove?: { action: string; data: Record<string, unknown> };
 }
 
@@ -25,6 +25,6 @@ export interface WatchState {
   videoTitle: string;
   isPlaying: boolean;
   currentTime: number;
-  gameType: "heart_tac_toe" | "connect_four" | "deep_talk" | null;
+  gameType: "heart_tac_toe" | "connect_four" | "deep_talk" | "puzzle" | null;
   gameTitle: string;
 }

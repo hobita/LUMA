@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { Heart, Sparkles, RefreshCw, Trophy, ArrowRight, MessageCircleHeart, Shuffle, X } from "lucide-react";
+import { PuzzleGame } from "./PuzzleGame";
 
-export type GameType = "heart_tac_toe" | "connect_four" | "deep_talk";
+export type GameType = "heart_tac_toe" | "connect_four" | "deep_talk" | "puzzle";
 
 interface CoupleGamesProps {
   gameType: GameType;
@@ -44,6 +45,17 @@ export function CoupleGames({
   lastRemoteMove,
   onCloseGame,
 }: CoupleGamesProps) {
+  // Puzzle has its own full-screen component
+  if (gameType === "puzzle") {
+    return (
+      <PuzzleGame
+        userRole={userRole}
+        onSendGameMove={onSendGameMove}
+        lastRemoteMove={lastRemoteMove}
+        onCloseGame={onCloseGame}
+      />
+    );
+  }
   // -------------------------------------------------------------
   // 1. HEART-TAC-TOE STATE & LOGIC
   // -------------------------------------------------------------

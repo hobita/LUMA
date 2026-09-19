@@ -151,6 +151,18 @@ const CATALOG_ITEMS: MediaItem[] = [
     logoText: "✨ Deep Talk",
     description: "Curated romantic, fun, and vulnerable questions to spark late-night conversations.",
   },
+  {
+    id: "game_puzzle",
+    title: "Puzzle Together",
+    category: "games",
+    tag: "Couple Game",
+    isNew: true,
+    type: "game",
+    gameType: "puzzle",
+    colorClass: "from-teal-600/25 to-emerald-950/40 border-teal-500/30 hover:border-teal-500/60",
+    logoText: "🧩 Puzzle Together",
+    description: "Solve jigsaw puzzles together in real-time. Upload couple photos or pick a preset to turn into a puzzle.",
+  },
 ];
 
 export function MediaSelectorModal({
