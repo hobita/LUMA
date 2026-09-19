@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Heart,
@@ -36,6 +37,7 @@ interface DashboardClientProps {
 }
 
 export default function DashboardClient({ initialSanctuary }: DashboardClientProps) {
+  const router = useRouter();
   const [sanctuary, setSanctuary] = useState(initialSanctuary);
   const [roomCode, setRoomCode] = useState("");
   const [roomName, setRoomName] = useState("Our Sanctuary");
@@ -117,14 +119,26 @@ export default function DashboardClient({ initialSanctuary }: DashboardClientPro
     if (!confirmed) return;
 
     setIsDeleting(true);
+    setErrorMessage(null);
     try {
       if (isOwner) {
-        await deleteRoomAction(room.id);
+        const res = await deleteRoomAction(room.id);
+        if (res?.error) {
+          setErrorMessage(res.error);
+          setIsDeleting(false);
+          return;
+        }
       } else {
-        await leaveRoomAction(room.id);
+        const res = await leaveRoomAction(room.id);
+        if (res?.error) {
+          setErrorMessage(res.error);
+          setIsDeleting(false);
+          return;
+        }
       }
       setSanctuary({ room: null, role: null, partnerProfile: null });
       setShowOtherOptions(true);
+      router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to reset room.";
       setErrorMessage(msg);

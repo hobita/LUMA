@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { RoomAccessResult, Room, UserSanctuaryResult, RoomRole, Profile } from "@/types/room";
 
@@ -432,15 +433,39 @@ export async function deleteRoomAction(roomId: string) {
 
     if (!user) return { error: "Unauthorized" };
 
+    // 1. Try atomic security definer RPC first if user ran the migration
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc("delete_room_by_owner", {
+        p_room_id: roomId,
+      });
+
+      if (!rpcError && (rpcData as { success?: boolean })?.success) {
+        revalidatePath("/dashboard");
+        revalidatePath("/");
+        return { success: true };
+      }
+    } catch {
+      // Fall through to direct table deletion
+    }
+
+    // 2. Cascade delete related messages and room members first to avoid FK constraint blocks
+    await supabase.from("messages").delete().eq("room_id", roomId);
+    await supabase.from("room_members").delete().eq("room_id", roomId);
+
+    // 3. Delete room by id or slug
     const { error } = await supabase
       .from("rooms")
       .delete()
-      .eq("id", roomId)
+      .or(`id.eq.${roomId},slug.eq.${roomId}`)
       .eq("owner_id", user.id);
 
     if (error) {
+      console.error("deleteRoomAction error:", error);
       return { error: error.message };
     }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/");
   } else {
     const rooms = await getDemoRooms();
     for (const key of Object.keys(rooms)) {
@@ -449,6 +474,8 @@ export async function deleteRoomAction(roomId: string) {
       }
     }
     await saveDemoRooms(rooms);
+    revalidatePath("/dashboard");
+    revalidatePath("/");
   }
   return { success: true };
 }
@@ -465,17 +492,42 @@ export async function leaveRoomAction(roomId: string) {
 
     if (!user) return { error: "Unauthorized" };
 
-    await supabase
-      .from("rooms")
-      .update({ partner_id: null })
-      .eq("id", roomId)
-      .eq("partner_id", user.id);
+    // 1. Try atomic security definer RPC first if available
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc("leave_room_as_partner", {
+        p_room_id: roomId,
+      });
 
+      if (!rpcError && (rpcData as { success?: boolean })?.success) {
+        revalidatePath("/dashboard");
+        revalidatePath("/");
+        return { success: true };
+      }
+    } catch {
+      // Fall through to direct table update
+    }
+
+    // 2. Remove member from junction table
     await supabase
       .from("room_members")
       .delete()
       .eq("room_id", roomId)
       .eq("user_id", user.id);
+
+    // 3. Clear partner_id on room
+    const { error } = await supabase
+      .from("rooms")
+      .update({ partner_id: null })
+      .or(`id.eq.${roomId},slug.eq.${roomId}`)
+      .eq("partner_id", user.id);
+
+    if (error) {
+      console.error("leaveRoomAction error:", error);
+      return { error: error.message };
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/");
   } else {
     const rooms = await getDemoRooms();
     for (const key of Object.keys(rooms)) {
@@ -485,6 +537,8 @@ export async function leaveRoomAction(roomId: string) {
       }
     }
     await saveDemoRooms(rooms);
+    revalidatePath("/dashboard");
+    revalidatePath("/");
   }
   return { success: true };
 }
