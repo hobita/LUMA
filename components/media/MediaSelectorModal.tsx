@@ -166,7 +166,7 @@ const CATALOG_ITEMS: MediaItem[] = [
     category: "activities",
     tag: "Romantic Walk",
     type: "youtube",
-    youtubeId: "7OGiK9Xn_r4",
+    youtubeId: "ufskJSgaLfI",
     colorClass: "from-cyan-800/20 to-blue-900/30 border-cyan-500/30 hover:border-cyan-500/60",
     logoText: "🌧️ Tokyo Rain",
     description: "4K neon night walk through Shinjuku with gentle binaural rain sounds.",

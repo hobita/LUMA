@@ -6,7 +6,6 @@ import {
   Search,
   X,
   Play,
-  Clock,
   Eye,
   TrendingUp,
   Music,
@@ -20,23 +19,13 @@ import {
   Radio,
 } from "lucide-react";
 
-// Invidious instances for YouTube search (free, no API key)
-const INVIDIOUS_INSTANCES = [
-  "https://inv.nadeko.net",
-  "https://invidious.nerdvpn.de",
-  "https://inv.tux.pizza",
-  "https://invidious.privacyredirect.com",
-];
-
 export interface YouTubeSearchResult {
   videoId: string;
   title: string;
   author: string;
-  authorId: string;
-  lengthSeconds: number;
-  viewCount: number;
-  publishedText: string;
-  videoThumbnails: { url: string; width: number; height: number; quality: string }[];
+  lengthText: string;
+  viewCountText: string;
+  thumbnail: string;
 }
 
 interface YouTubeBrowserProps {
@@ -97,33 +86,6 @@ const BROWSE_CATEGORIES = [
   },
 ];
 
-function formatDuration(seconds: number): string {
-  if (!seconds || seconds <= 0) return "LIVE";
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hrs > 0) return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-
-function formatViewCount(count: number): string {
-  if (!count) return "";
-  if (count >= 1_000_000_000) return `${(count / 1_000_000_000).toFixed(1)}B views`;
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M views`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K views`;
-  return `${count} views`;
-}
-
-function getBestThumbnail(thumbnails: YouTubeSearchResult["videoThumbnails"]): string {
-  // Prefer medium quality for cards
-  const medium = thumbnails.find((t) => t.quality === "medium");
-  if (medium) return medium.url;
-  const high = thumbnails.find((t) => t.quality === "high");
-  if (high) return high.url;
-  // Fallback to standard YouTube thumbnail
-  return thumbnails[0]?.url || "";
-}
-
 export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowserProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<YouTubeSearchResult[]>([]);
@@ -132,7 +94,6 @@ export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowse
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const instanceIndexRef = useRef(0);
 
   // Focus search input on open
   useEffect(() => {
@@ -148,48 +109,27 @@ export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowse
     setHasSearched(true);
     setResults([]);
 
-    // Try multiple Invidious instances for reliability
-    for (let attempt = 0; attempt < INVIDIOUS_INSTANCES.length; attempt++) {
-      const idx = (instanceIndexRef.current + attempt) % INVIDIOUS_INSTANCES.length;
-      const instance = INVIDIOUS_INSTANCES[idx];
+    try {
+      const response = await fetch(
+        `/api/youtube/search?q=${encodeURIComponent(query)}`
+      );
 
-      try {
-        const response = await fetch(
-          `${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&sort_by=relevance`,
-          { signal: AbortSignal.timeout(8000) }
-        );
-
-        if (!response.ok) continue;
-
-        const data = await response.json();
-        const videos: YouTubeSearchResult[] = data
-          .filter((item: Record<string, unknown>) => item.type === "video")
-          .slice(0, 20)
-          .map((item: Record<string, unknown>) => ({
-            videoId: item.videoId as string,
-            title: item.title as string,
-            author: item.author as string,
-            authorId: item.authorId as string,
-            lengthSeconds: (item.lengthSeconds as number) || 0,
-            viewCount: (item.viewCount as number) || 0,
-            publishedText: (item.publishedText as string) || "",
-            videoThumbnails: (item.videoThumbnails as YouTubeSearchResult["videoThumbnails"]) || [],
-          }));
-
-        if (videos.length > 0) {
-          instanceIndexRef.current = idx; // Prefer this instance next time
-          setResults(videos);
-          setIsSearching(false);
-          return;
-        }
-      } catch {
-        // Try next instance
+      if (!response.ok) {
+        throw new Error("Search request failed");
       }
-    }
 
-    // All instances failed — try fallback with a direct YouTube thumbnail approach
-    setSearchError("Search temporarily unavailable. You can paste a YouTube URL directly.");
-    setIsSearching(false);
+      const data = await response.json();
+      if (Array.isArray(data.videos) && data.videos.length > 0) {
+        setResults(data.videos);
+        setIsSearching(false);
+        return;
+      }
+      setSearchError(null);
+    } catch {
+      setSearchError("Search temporarily unavailable. You can paste a YouTube URL directly.");
+    } finally {
+      setIsSearching(false);
+    }
   }, []);
 
   const handleSearch = useCallback(
@@ -313,7 +253,7 @@ export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowse
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {[
                   { id: "L_LUpnjgPso", title: "Cozy Fireplace with Soft Guitar", tag: "Warm Ambiance" },
-                  { id: "7OGiK9Xn_r4", title: "Rainy Night in Tokyo — Walking Tour", tag: "Romantic Walk" },
+                  { id: "ufskJSgaLfI", title: "Rainy Night in Tokyo — Walking Tour", tag: "Romantic Walk" },
                   { id: "5qap5aO4i9A", title: "Lofi Hip Hop Radio — Beats to Relax", tag: "Cozy Study" },
                   { id: "lTRiuFIWV54", title: "Jazz in Paris — Slow Jazz Cafe", tag: "Café Date" },
                   { id: "rUxyKA_-grg", title: "Northern Lights 4K — Arctic Aurora", tag: "Scenic" },
@@ -407,9 +347,8 @@ export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowse
                       <div className="relative aspect-video bg-zinc-900 overflow-hidden">
                         <img
                           src={
-                            video.videoThumbnails.length > 0
-                              ? getBestThumbnail(video.videoThumbnails)
-                              : `https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`
+                            video.thumbnail ||
+                            `https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`
                           }
                           alt={video.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -417,9 +356,11 @@ export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowse
                         />
 
                         {/* Duration Badge */}
-                        <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/80 text-[10px] font-semibold text-white backdrop-blur-sm">
-                          {formatDuration(video.lengthSeconds)}
-                        </div>
+                        {video.lengthText && (
+                          <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/80 text-[10px] font-semibold text-white backdrop-blur-sm">
+                            {video.lengthText}
+                          </div>
+                        )}
 
                         {/* Play overlay on hover */}
                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -435,20 +376,14 @@ export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowse
                           {video.title}
                         </h4>
                         <p className="text-[11px] text-zinc-500 mt-1.5 truncate">{video.author}</p>
-                        <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-600">
-                          {video.viewCount > 0 && (
+                        {video.viewCountText && (
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-600">
                             <span className="flex items-center gap-1">
                               <Eye className="w-3 h-3" />
-                              {formatViewCount(video.viewCount)}
+                              {video.viewCountText}
                             </span>
-                          )}
-                          {video.publishedText && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {video.publishedText}
-                            </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </button>
                   ))}
@@ -473,7 +408,7 @@ export function YouTubeBrowser({ isOpen, onClose, onSelectVideo }: YouTubeBrowse
             <Radio className="w-3 h-3 text-purple-400 animate-pulse" />
             Selected videos play synchronized for both of you
           </span>
-          <span>Powered by Invidious</span>
+          <span>YouTube Live Search</span>
         </div>
       </div>
     </div>
