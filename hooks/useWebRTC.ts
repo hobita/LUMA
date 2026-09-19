@@ -33,6 +33,7 @@ export function useWebRTC({
   // Reactive streams: when these change, the component rebinds srcObject
   const [localDisplayStream, setLocalDisplayStream] = useState<MediaStream | null>(null);
   const [remoteDisplayStream, setRemoteDisplayStream] = useState<MediaStream | null>(null);
+  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
   const [remoteMediaState, setRemoteMediaState] = useState({
     micActive: true,
@@ -45,6 +46,9 @@ export function useWebRTC({
   const localStreamRef = useRef<MediaStream | null>(null);
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const screenSenderRef = useRef<RTCRtpSender | null>(null);
+  // Track IDs of the first remote video stream (camera) to distinguish from screen
+  const remoteVideoStreamIdRef = useRef<string | null>(null);
   const bufferedCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const supabaseRef = useRef(createClient());
   const channelRef = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null);
@@ -142,16 +146,41 @@ export function useWebRTC({
       });
     }
 
-    // Handle remote tracks
+    // Handle remote tracks — distinguish camera vs screen
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
-      if (remoteStream) {
+      if (!remoteStream) return;
+
+      const track = event.track;
+      if (track.kind === "video") {
+        if (!remoteVideoStreamIdRef.current) {
+          // First video stream = camera
+          remoteVideoStreamIdRef.current = remoteStream.id;
+          setRemoteDisplayStream(remoteStream);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+          }
+        } else if (remoteStream.id !== remoteVideoStreamIdRef.current) {
+          // Second video stream = screen share
+          setRemoteScreenStream(remoteStream);
+
+          // When the screen track ends, clear the screen stream
+          track.onended = () => {
+            setRemoteScreenStream(null);
+          };
+          // Also handle track removal via mute
+          track.onmute = () => {
+            setRemoteScreenStream(null);
+          };
+        }
+      } else if (track.kind === "audio" && !remoteVideoStreamIdRef.current) {
+        // Audio-only case: still mark as having remote media
         setRemoteDisplayStream(remoteStream);
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
         }
-        setHasRemoteMedia(true);
       }
+      setHasRemoteMedia(true);
     };
 
     // Handle ICE candidates
@@ -394,34 +423,22 @@ export function useWebRTC({
 
   // Stop screen sharing callback
   const stopScreenSharing = useCallback(async () => {
-    // Save reference before clearing
-    const stoppedScreenTrack = screenTrackRef.current;
-
     // Stop the screen track
+    const stoppedScreenTrack = screenTrackRef.current;
     if (stoppedScreenTrack) {
       stoppedScreenTrack.stop();
       screenTrackRef.current = null;
     }
 
-    // Revert peer connection sender to camera track
+    // Remove the screen sender from the peer connection (don't touch camera sender)
     const pc = pcRef.current;
-    if (cameraTrackRef.current && pc) {
-      // Find the sender: it either still holds the (now stopped) screen track,
-      // holds any video-kind track, or has a null track (stopped track gets nulled by browser)
-      const videoSender = pc.getSenders().find(
-        (s) =>
-          s.track === stoppedScreenTrack ||
-          s.track?.kind === "video" ||
-          (s !== pc.getSenders().find((x) => x.track?.kind === "audio") && !s.track)
-      );
-
-      if (videoSender) {
-        try {
-          await videoSender.replaceTrack(cameraTrackRef.current);
-        } catch (e) {
-          console.warn("Error restoring camera track:", e);
-        }
+    if (pc && screenSenderRef.current) {
+      try {
+        pc.removeTrack(screenSenderRef.current);
+      } catch (e) {
+        console.warn("Error removing screen sender:", e);
       }
+      screenSenderRef.current = null;
     }
 
     // Restore local camera preview
@@ -464,23 +481,14 @@ export function useWebRTC({
 
         screenTrackRef.current = screenTrack;
 
-        // Replace video track in peer connection (if connected)
+        // ADD screen track as a SECOND sender (camera stays untouched)
         const pc = pcRef.current;
         if (pc) {
-          // Find the sender that's carrying a video track (camera)
-          const videoSender = pc
-            .getSenders()
-            .find((s) => s.track?.kind === "video");
-
-          if (videoSender) {
-            await videoSender.replaceTrack(screenTrack);
-          } else {
-            // No video sender yet (e.g. audio-only fallback) — add the screen track
-            pc.addTrack(screenTrack, screenStream);
-          }
+          const sender = pc.addTrack(screenTrack, screenStream);
+          screenSenderRef.current = sender;
         }
 
-        // Preview locally
+        // Preview locally: show screen in main local view
         setLocalDisplayStream(screenStream);
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = screenStream;
@@ -515,6 +523,7 @@ export function useWebRTC({
     remoteVideoRef,
     localDisplayStream,
     remoteDisplayStream,
+    remoteScreenStream,
     connectionState,
     hasRemoteMedia,
     micActive,

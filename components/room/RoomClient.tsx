@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Mic,
@@ -90,6 +90,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
     remoteVideoRef,
     localDisplayStream,
     remoteDisplayStream,
+    remoteScreenStream,
     connectionState,
     hasRemoteMedia,
     micActive,
@@ -126,6 +127,18 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
       }
     },
     [remoteVideoRef, remoteDisplayStream]
+  );
+
+  // Remote screen share video callback ref
+  const remoteScreenRef = useRef<HTMLVideoElement | null>(null);
+  const remoteScreenCallbackRef = useCallback(
+    (el: HTMLVideoElement | null) => {
+      remoteScreenRef.current = el;
+      if (el && remoteScreenStream) {
+        el.srcObject = remoteScreenStream;
+      }
+    },
+    [remoteScreenStream]
   );
 
   // 5. Watch Together Synchronized Media & Games
@@ -332,21 +345,33 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
             <div className="absolute top-16 right-4 z-30 flex flex-col gap-2 pointer-events-auto">
               {/* Partner PiP */}
               <div className="w-40 h-24 rounded-2xl overflow-hidden glass-panel border border-white/20 shadow-2xl relative bg-black/70">
-                <video
-                  ref={remoteVideoCallbackRef}
-                  autoPlay
-                  playsInline
-                  className={`w-full h-full object-cover ${
-                    hasRemoteMedia && remoteMediaState.videoActive ? "opacity-100" : "opacity-0"
-                  }`}
-                />
-                {(!hasRemoteMedia || !remoteMediaState.videoActive) && (
+                {/* Show screen share if partner is sharing, otherwise show webcam */}
+                {remoteScreenStream ? (
+                  <video
+                    ref={remoteScreenCallbackRef}
+                    autoPlay
+                    playsInline
+                    className={`w-full h-full object-cover ${
+                      hasRemoteMedia ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
+                ) : (
+                  <video
+                    ref={remoteVideoCallbackRef}
+                    autoPlay
+                    playsInline
+                    className={`w-full h-full object-cover ${
+                      hasRemoteMedia && remoteMediaState.videoActive ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
+                )}
+                {(!hasRemoteMedia || (!remoteMediaState.videoActive && !remoteScreenStream)) && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <Heart className="w-6 h-6 text-rose-400 fill-rose-500/30" />
                   </div>
                 )}
                 <span className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 text-[9px] text-zinc-300">
-                  Partner
+                  Partner{remoteScreenStream ? " 🖥" : ""}
                 </span>
               </div>
 
@@ -477,16 +502,47 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
 
               {/* Video Canvas */}
               <div className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden bg-black/40">
-                <video
-                  ref={remoteVideoCallbackRef}
-                  autoPlay
-                  playsInline
-                  className={`w-full h-full object-cover transition-opacity duration-300 ${
-                    hasRemoteMedia && remoteMediaState.videoActive ? "opacity-100" : "opacity-0"
-                  }`}
-                />
+                {/* When partner is screen sharing, show screen as main + webcam as PiP */}
+                {remoteScreenStream ? (
+                  <>
+                    {/* Screen share as main */}
+                    <video
+                      ref={remoteScreenCallbackRef}
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-contain transition-opacity duration-300 opacity-100"
+                    />
+                    {/* Webcam as PiP overlay */}
+                    <div className="absolute bottom-3 right-3 w-28 h-20 rounded-xl overflow-hidden border border-white/20 shadow-lg bg-black/60 z-30">
+                      <video
+                        ref={remoteVideoCallbackRef}
+                        autoPlay
+                        playsInline
+                        className={`w-full h-full object-cover ${
+                          remoteMediaState.videoActive ? "opacity-100" : "opacity-0"
+                        }`}
+                      />
+                      {!remoteMediaState.videoActive && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Heart className="w-4 h-4 text-rose-400 fill-rose-500/30" />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <video
+                      ref={remoteVideoCallbackRef}
+                      autoPlay
+                      playsInline
+                      className={`w-full h-full object-cover transition-opacity duration-300 ${
+                        hasRemoteMedia && remoteMediaState.videoActive ? "opacity-100" : "opacity-0"
+                      }`}
+                    />
+                  </>
+                )}
 
-                {(!hasRemoteMedia || !remoteMediaState.videoActive) && (
+                {(!hasRemoteMedia || (!remoteMediaState.videoActive && !remoteScreenStream)) && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-radial from-rose-900/20 to-transparent">
                     {hasRemoteMedia && !remoteMediaState.videoActive ? (
                       <>
