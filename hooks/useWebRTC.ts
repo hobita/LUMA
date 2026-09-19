@@ -227,19 +227,28 @@ export function useWebRTC({
       }
     };
 
-    // Connection state changes
-    pc.onconnectionstatechange = () => {
-      setConnectionState(pc.connectionState);
-      if (pc.connectionState === "connected") {
+    // Connection state changes (handles both standard and mobile/cellular iceConnectionState)
+    const updateState = () => {
+      const cState = pc.connectionState;
+      const iceState = pc.iceConnectionState;
+
+      if (cState === "connected" || iceState === "connected" || iceState === "completed") {
+        setConnectionState("connected");
         setHasRemoteMedia(true);
-      } else if (
-        pc.connectionState === "disconnected" ||
-        pc.connectionState === "failed" ||
-        pc.connectionState === "closed"
-      ) {
-        setHasRemoteMedia(false);
+      } else if (cState === "failed" || iceState === "failed") {
+        setConnectionState("failed");
+        try {
+          pc.restartIce();
+        } catch {}
+      } else if (cState === "connecting" || iceState === "checking") {
+        setConnectionState("connecting");
+      } else if (cState === "disconnected" || iceState === "disconnected") {
+        setConnectionState("disconnected");
       }
     };
+
+    pc.onconnectionstatechange = updateState;
+    pc.oniceconnectionstatechange = updateState;
 
     return pc;
   }, [broadcastSignaling, currentUserId]);
@@ -324,9 +333,14 @@ export function useWebRTC({
       }
 
       if (payload.type === "peer_ready") {
-        // Partner is ready: if we are the owner or ready, start call
         if (isInitiatorRef.current) {
           startCall();
+        } else {
+          // Acknowledge so the initiator knows we are subscribed and ready
+          broadcastSignaling({
+            type: "peer_ready",
+            senderId: currentUserId,
+          });
         }
         return;
       }
@@ -455,9 +469,14 @@ export function useWebRTC({
     };
   }, [slug, currentUserId, initLocalMedia, handleSignaling, broadcastSignaling]);
 
-  // When partner presence changes to online, trigger peer ready
+  // When partner presence changes to online, trigger peer ready and retry until connected
   useEffect(() => {
-    if (partnerOnline) {
+    if (!partnerOnline || connectionState === "connected") return;
+
+    let retryCount = 0;
+    const maxRetries = 6;
+
+    const attemptConnect = () => {
       broadcastSignaling({
         type: "peer_ready",
         senderId: currentUserId,
@@ -465,8 +484,21 @@ export function useWebRTC({
       if (isInitiatorRef.current) {
         startCall();
       }
-    }
-  }, [partnerOnline, broadcastSignaling, currentUserId, startCall]);
+    };
+
+    attemptConnect();
+
+    const timer = setInterval(() => {
+      if (retryCount >= maxRetries) {
+        clearInterval(timer);
+        return;
+      }
+      retryCount++;
+      attemptConnect();
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [partnerOnline, connectionState, broadcastSignaling, currentUserId, startCall]);
 
   // Media Controls: Toggle Microphone
   const toggleMic = useCallback(() => {
