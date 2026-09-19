@@ -235,8 +235,8 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
               registerPlayer={registerPlayer}
             />
 
-            {/* Floating Picture-in-Picture Webcams (Top Right) */}
-            <div className="absolute top-4 right-4 z-30 flex flex-col gap-2 pointer-events-auto">
+            {/* Floating Picture-in-Picture Webcams (Top Right, below header controls) */}
+            <div className="absolute top-16 right-4 z-30 flex flex-col gap-2 pointer-events-auto">
               {/* Partner PiP */}
               <div className="w-40 h-24 rounded-2xl overflow-hidden glass-panel border border-white/20 shadow-2xl relative bg-black/70">
                 <video
@@ -503,7 +503,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
               if (watchState.isActive) {
                 closeWatch();
               } else {
-                loadVideo("jfKfPfyJRdk", "Lofi Girl — Beats to Relax/Study to");
+                loadVideo("L_LUpnjgPso", "Cozy Fireplace with Soft Acoustic Guitar");
               }
             }}
             className={`p-3.5 rounded-2xl transition-all ${

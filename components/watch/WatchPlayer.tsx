@@ -14,6 +14,7 @@ declare global {
           events?: {
             onReady?: (event: { target: YTPlayer }) => void;
             onStateChange?: (event: { data: number; target: YTPlayer }) => void;
+            onError?: (event: { data: number; target: YTPlayer }) => void;
           };
         }
       ) => YTPlayer;
@@ -51,12 +52,12 @@ interface WatchPlayerProps {
   }) => void;
 }
 
-// Curated cozy presets for long-distance couples
+// Curated cozy presets for long-distance couples (evergreen uploads)
 const COZY_PRESETS = [
   {
-    id: "jfKfPfyJRdk",
-    title: "Lofi Girl — Beats to Relax/Study to",
-    tag: "Cozy Study",
+    id: "L_LUpnjgPso",
+    title: "Cozy Fireplace with Soft Acoustic Guitar",
+    tag: "Warm Ambiance",
   },
   {
     id: "7OGiK9Xn_r4",
@@ -64,9 +65,9 @@ const COZY_PRESETS = [
     tag: "Romantic Walk",
   },
   {
-    id: "L_LUpnjgPso",
-    title: "Cozy Fireplace with Soft Acoustic Guitar",
-    tag: "Warm Ambiance",
+    id: "5qap5aO4i9A",
+    title: "Lofi Hip Hop Radio — Beats to Relax/Study to",
+    tag: "Cozy Study",
   },
 ];
 
@@ -159,6 +160,10 @@ export function WatchPlayer({
             } else if (state === window.YT.PlayerState.PAUSED) {
               onPause(event.target.getCurrentTime());
             }
+          },
+          onError: () => {
+            if (!isMounted) return;
+            setPickerOpen(true);
           },
         },
       });
