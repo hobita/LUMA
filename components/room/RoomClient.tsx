@@ -31,7 +31,6 @@ import { ReactionPicker } from "@/components/reactions/ReactionPicker";
 import { WatchPlayer } from "@/components/watch/WatchPlayer";
 import { MediaSelectorModal } from "@/components/media/MediaSelectorModal";
 import { CoupleGames } from "@/components/games/CoupleGames";
-import { Film } from "lucide-react";
 
 interface RoomClientProps {
   room: Room;
@@ -65,7 +64,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
   }
 
   // 1. Realtime Presence
-  const { partnerOnline, isConnected } = usePresence(
+  const { partnerOnline } = usePresence(
     room.slug,
     currentUserId,
     userRole === "owner" ? "Host" : "Partner"

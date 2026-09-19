@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { RoomAccessResult, Room } from "@/types/room";
+import { RoomAccessResult, Room, UserSanctuaryResult, RoomRole, Profile } from "@/types/room";
 
 // Helper to generate a memorable 4-character code (e.g., "7F92")
 function generateSlugCode(): string {
@@ -308,3 +308,184 @@ export async function getRoomAccess(slug: string): Promise<RoomAccessResult> {
     };
   }
 }
+
+/**
+ * Fetches the persistent Sanctuary room for the current user (owner or partner).
+ * This ensures couples always stay connected to their room without having to re-create it.
+ */
+export async function getUserSanctuary(): Promise<UserSanctuaryResult> {
+  if (hasSupabaseConfig()) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { room: null, role: null, partnerProfile: null };
+    }
+
+    // 1. Fetch user's own profile display name
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("display_name, email")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    // 2. Fetch room where user is owner or partner
+    const { data: rooms, error } = await supabase
+      .from("rooms")
+      .select("*")
+      .or(`owner_id.eq.${user.id},partner_id.eq.${user.id}`)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error || !rooms || rooms.length === 0) {
+      return {
+        room: null,
+        role: null,
+        partnerProfile: null,
+        userEmail: user.email,
+        userDisplayName: userProfile?.display_name || user.email?.split("@")[0] || "Love",
+      };
+    }
+
+    const room = rooms[0] as Room;
+    const role: RoomRole = room.owner_id === user.id ? "owner" : "partner";
+
+    let partnerProfile: Profile | null = null;
+    const partnerId = room.owner_id === user.id ? room.partner_id : room.owner_id;
+
+    if (partnerId) {
+      const { data: pProfile } = await supabase
+        .from("profiles")
+        .select("id, email, display_name, avatar_url")
+        .eq("id", partnerId)
+        .maybeSingle();
+
+      if (pProfile) {
+        partnerProfile = pProfile as Profile;
+      }
+    }
+
+    return {
+      room,
+      role,
+      partnerProfile,
+      userEmail: user.email,
+      userDisplayName: userProfile?.display_name || user.email?.split("@")[0] || "Love",
+    };
+  } else {
+    // Demo Mode fallback
+    const userId = await getDemoUserId(false);
+    const rooms = await getDemoRooms();
+    const userRoomList = Object.values(rooms).filter((r) =>
+      r.members?.includes(userId)
+    );
+
+    if (userRoomList.length === 0) {
+      return {
+        room: null,
+        role: null,
+        partnerProfile: null,
+        userEmail: "demo@luma.space",
+        userDisplayName: "Demo User",
+      };
+    }
+
+    const demoRoom = userRoomList[0];
+    const role: RoomRole = demoRoom.owner_id === userId ? "owner" : "partner";
+
+    return {
+      room: {
+        id: `demo-${demoRoom.slug}`,
+        slug: demoRoom.slug,
+        name: demoRoom.name,
+        owner_id: demoRoom.owner_id,
+        partner_id: demoRoom.partner_id || null,
+        created_at: new Date().toISOString(),
+        is_active: true,
+      },
+      role,
+      partnerProfile: demoRoom.partner_id
+        ? {
+            id: demoRoom.partner_id,
+            email: "partner@luma.space",
+            display_name: "My Partner",
+          }
+        : null,
+      userEmail: "demo@luma.space",
+      userDisplayName: "Demo Lover",
+    };
+  }
+}
+
+/**
+ * Permanently deletes a room if the owner explicitly chooses to reset it.
+ */
+export async function deleteRoomAction(roomId: string) {
+  if (hasSupabaseConfig()) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { error: "Unauthorized" };
+
+    const { error } = await supabase
+      .from("rooms")
+      .delete()
+      .eq("id", roomId)
+      .eq("owner_id", user.id);
+
+    if (error) {
+      return { error: error.message };
+    }
+  } else {
+    const rooms = await getDemoRooms();
+    for (const key of Object.keys(rooms)) {
+      if (rooms[key].slug === roomId || `demo-${rooms[key].slug}` === roomId) {
+        delete rooms[key];
+      }
+    }
+    await saveDemoRooms(rooms);
+  }
+  return { success: true };
+}
+
+/**
+ * Leaves a room partnership (partner only).
+ */
+export async function leaveRoomAction(roomId: string) {
+  if (hasSupabaseConfig()) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { error: "Unauthorized" };
+
+    await supabase
+      .from("rooms")
+      .update({ partner_id: null })
+      .eq("id", roomId)
+      .eq("partner_id", user.id);
+
+    await supabase
+      .from("room_members")
+      .delete()
+      .eq("room_id", roomId)
+      .eq("user_id", user.id);
+  } else {
+    const rooms = await getDemoRooms();
+    for (const key of Object.keys(rooms)) {
+      if (rooms[key].partner_id) {
+        rooms[key].partner_id = undefined;
+        rooms[key].members = rooms[key].members.filter((m) => m !== roomId);
+      }
+    }
+    await saveDemoRooms(rooms);
+  }
+  return { success: true };
+}
+

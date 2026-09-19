@@ -34,3 +34,12 @@ export interface RoomAccessResult {
   userRole?: RoomRole;
   partnerProfile?: Profile | null;
 }
+
+export interface UserSanctuaryResult {
+  room: Room | null;
+  role: RoomRole | null;
+  partnerProfile: Profile | null;
+  userEmail?: string;
+  userDisplayName?: string;
+}
+
