@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Tv, Sparkles, Film, Compass, ExternalLink } from "lucide-react";
+import { X, Tv, Sparkles, Film, Compass, ExternalLink, Search } from "lucide-react";
 
 declare global {
   interface Window {
@@ -44,6 +44,7 @@ interface WatchPlayerProps {
   onSeek: (currentTime: number) => void;
   onClose: () => void;
   onSelectVideo: (videoId: string, title: string) => void;
+  onOpenYouTubeBrowser?: () => void;
   registerPlayer: (controller: {
     play: () => void;
     pause: () => void;
@@ -78,6 +79,7 @@ export function WatchPlayer({
   onPause,
   onClose,
   onSelectVideo,
+  onOpenYouTubeBrowser,
   registerPlayer,
 }: WatchPlayerProps) {
   const [customUrl, setCustomUrl] = useState("");
@@ -200,6 +202,17 @@ export function WatchPlayer({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenYouTubeBrowser && (
+            <button
+              onClick={onOpenYouTubeBrowser}
+              className="px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-xs text-red-300 hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
+              title="Search Songs & Videos on YouTube"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Search YouTube</span>
+            </button>
+          )}
+
           <button
             onClick={() => setPickerOpen(!pickerOpen)}
             className="px-3 py-1.5 rounded-xl glass-panel text-xs text-purple-300 hover:text-white hover:bg-white/[0.08] transition-all flex items-center gap-1.5"
@@ -236,6 +249,30 @@ export function WatchPlayer({
         {pickerOpen && (
           <div className="absolute inset-0 z-30 bg-black/85 backdrop-blur-md p-6 flex flex-col justify-between overflow-y-auto">
             <div>
+              {onOpenYouTubeBrowser && (
+                <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-red-600/20 via-purple-600/20 to-pink-600/20 border border-red-500/30 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-600/30 border border-red-500/40 flex items-center justify-center">
+                      <Search className="w-5 h-5 text-red-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Search YouTube Catalog</h4>
+                      <p className="text-xs text-zinc-400">Search songs, artists, playlists or videos to play together</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setPickerOpen(false);
+                      onOpenYouTubeBrowser();
+                    }}
+                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-medium text-xs transition-all shadow-lg shadow-red-900/30 flex items-center gap-1.5"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Search YouTube</span>
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Compass className="w-4 h-4 text-purple-400" />

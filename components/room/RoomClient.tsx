@@ -18,6 +18,7 @@ import {
   MonitorUp,
   AlertCircle,
   Tv,
+  Play,
 } from "lucide-react";
 import { Room, RoomRole } from "@/types/room";
 import { usePresence } from "@/hooks/usePresence";
@@ -31,6 +32,7 @@ import { ReactionPicker } from "@/components/reactions/ReactionPicker";
 import { WatchPlayer } from "@/components/watch/WatchPlayer";
 import { MediaSelectorModal } from "@/components/media/MediaSelectorModal";
 import { CoupleGames } from "@/components/games/CoupleGames";
+import { YouTubeBrowser } from "@/components/media/YouTubeBrowser";
 
 interface RoomClientProps {
   room: Room;
@@ -42,6 +44,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
+  const [youtubeBrowserOpen, setYoutubeBrowserOpen] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
 
   // Call duration counter
@@ -288,6 +291,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
                 onSeek={syncSeek}
                 onClose={closeWatch}
                 onSelectVideo={(id, title) => loadVideo(id, title)}
+                onOpenYouTubeBrowser={() => setYoutubeBrowserOpen(true)}
                 registerPlayer={registerPlayer}
               />
             )}
@@ -595,6 +599,15 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
             )}
           </button>
 
+          {/* YouTube & Music Search Button */}
+          <button
+            onClick={() => setYoutubeBrowserOpen(true)}
+            className="p-3.5 rounded-full bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white border border-red-500/30 transition-all duration-200 hover:scale-110 active:scale-95 shadow-lg shadow-red-900/20"
+            title="Search YouTube Music & Videos"
+          >
+            <Play className="w-5 h-5 fill-current" />
+          </button>
+
           {/* Chat Toggle */}
           <button
             onClick={() => setChatOpen(!chatOpen)}
@@ -633,6 +646,13 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
         onSelectYouTube={(id, title) => loadVideo(id, title)}
         onSelectGame={(gameType, title) => loadGame(gameType, title)}
         onTriggerScreenShare={toggleScreenShare}
+      />
+
+      {/* Embedded YouTube Browser Modal */}
+      <YouTubeBrowser
+        isOpen={youtubeBrowserOpen}
+        onClose={() => setYoutubeBrowserOpen(false)}
+        onSelectVideo={(id, title) => loadVideo(id, title)}
       />
     </div>
   );

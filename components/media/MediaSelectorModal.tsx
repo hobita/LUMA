@@ -20,6 +20,7 @@ import {
   Radio,
 } from "lucide-react";
 import { GameType } from "../games/CoupleGames";
+import { YouTubeBrowser } from "./YouTubeBrowser";
 
 export type MediaItemCategory = "streaming" | "games" | "activities" | "web";
 
@@ -47,18 +48,17 @@ interface MediaSelectorModalProps {
 }
 
 const CATALOG_ITEMS: MediaItem[] = [
-  // 1. YOUTUBE
+  // 1. YOUTUBE (opens embedded browser)
   {
     id: "youtube_main",
     title: "YouTube",
     category: "streaming",
-    tag: "Video Catalog",
+    tag: "Search & Browse",
     isPopular: true,
-    type: "youtube",
-    youtubeId: "L_LUpnjgPso",
+    type: "youtube_browser" as MediaItem["type"],
     colorClass: "from-red-600/20 to-red-900/30 border-red-500/30 hover:border-red-500/60",
-    logoText: "YouTube",
-    description: "Watch any YouTube video or livestream together with real-time playback sync.",
+    logoText: "▶ YouTube",
+    description: "Search for songs, videos, and livestreams — browse and play together in real-time.",
   },
   // 2. COUPLE GAMES
   {
@@ -196,6 +196,7 @@ export function MediaSelectorModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [customUrl, setCustomUrl] = useState("");
   const [screenSharePromptService, setScreenSharePromptService] = useState<string | null>(null);
+  const [youtubeBrowserOpen, setYoutubeBrowserOpen] = useState(false);
 
   // Extract YouTube ID helper
   function extractYouTubeId(url: string): string | null {
@@ -345,12 +346,23 @@ export function MediaSelectorModal({
         <div className="flex-1 flex overflow-hidden">
           {/* LEFT SIDEBAR NAVIGATION */}
           <div className="w-44 sm:w-52 border-r border-white/[0.08] p-3 flex flex-col gap-1 bg-[#100C1F]/60 shrink-0">
+            {/* YouTube Browser Quick Access */}
+            <button
+              onClick={() => setYoutubeBrowserOpen(true)}
+              className="w-full px-3.5 py-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all text-left bg-gradient-to-r from-red-600/20 to-rose-600/10 border border-red-500/30 text-red-300 hover:text-white hover:from-red-600/30 hover:to-rose-600/20 mb-2"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span>YouTube</span>
+            </button>
+
+            <div className="h-px bg-white/[0.06] my-1" />
+
             {[
               { id: "discover", label: "Discover", icon: Sparkles },
               { id: "streaming", label: "Streaming", icon: Film },
               { id: "games", label: "Games", icon: Gamepad2 },
               { id: "activities", label: "Activities", icon: Flame },
-              { id: "web", label: "Web Search", icon: Globe },
+              { id: "web", label: "Direct URL", icon: Globe },
             ].map((cat) => {
               const Icon = cat.icon;
               const isActive = activeCategory === cat.id;
@@ -465,7 +477,9 @@ export function MediaSelectorModal({
                   <div
                     key={item.id}
                     onClick={() => {
-                      if (item.type === "youtube" && item.youtubeId) {
+                      if (item.id === "youtube_main") {
+                        setYoutubeBrowserOpen(true);
+                      } else if (item.type === "youtube" && item.youtubeId) {
                         onSelectYouTube(item.youtubeId, item.title);
                         onClose();
                       } else if (item.type === "game" && item.gameType) {
@@ -524,6 +538,17 @@ export function MediaSelectorModal({
             )}
           </div>
         </div>
+
+        {/* YouTube Browser Overlay */}
+        <YouTubeBrowser
+          isOpen={youtubeBrowserOpen}
+          onClose={() => setYoutubeBrowserOpen(false)}
+          onSelectVideo={(videoId, title) => {
+            onSelectYouTube(videoId, title);
+            setYoutubeBrowserOpen(false);
+            onClose();
+          }}
+        />
       </div>
     </div>
   );
