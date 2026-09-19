@@ -45,6 +45,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
   const [copied, setCopied] = useState(false);
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const [youtubeBrowserOpen, setYoutubeBrowserOpen] = useState(false);
+  const [localMedia, setLocalMedia] = useState<{ url: string; name: string; type: string } | null>(null);
   const [callDuration, setCallDuration] = useState(0);
 
   // Call duration counter
@@ -131,6 +132,7 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
   const {
     watchState,
     loadVideo,
+    loadLocalMedia,
     loadGame,
     sendGameMove,
     lastRemoteGameMove,
@@ -140,6 +142,27 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
     closeWatch,
     registerPlayer,
   } = useWatchTogether(room.slug, currentUserId);
+
+  const handleSelectLocalMedia = useCallback(
+    (file: File) => {
+      if (localMedia?.url) {
+        URL.revokeObjectURL(localMedia.url);
+      }
+      const url = URL.createObjectURL(file);
+      setLocalMedia({ url, name: file.name, type: file.type });
+      loadLocalMedia(file.name);
+      setMediaModalOpen(false);
+    },
+    [localMedia, loadLocalMedia]
+  );
+
+  const handleCloseWatch = useCallback(() => {
+    if (localMedia?.url) {
+      URL.revokeObjectURL(localMedia.url);
+    }
+    setLocalMedia(null);
+    closeWatch();
+  }, [localMedia, closeWatch]);
 
   function copyInvite() {
     if (typeof window !== "undefined") {
@@ -286,12 +309,21 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
               <WatchPlayer
                 videoId={watchState.videoId}
                 videoTitle={watchState.videoTitle}
+                localMedia={localMedia}
                 onPlay={syncPlay}
                 onPause={syncPause}
                 onSeek={syncSeek}
-                onClose={closeWatch}
-                onSelectVideo={(id, title) => loadVideo(id, title)}
+                onClose={handleCloseWatch}
+                onSelectVideo={(id, title) => {
+                  if (localMedia?.url) {
+                    URL.revokeObjectURL(localMedia.url);
+                    setLocalMedia(null);
+                  }
+                  loadVideo(id, title);
+                }}
+                onSelectLocalFile={handleSelectLocalMedia}
                 onOpenYouTubeBrowser={() => setYoutubeBrowserOpen(true)}
+                onTriggerScreenShare={toggleScreenShare}
                 registerPlayer={registerPlayer}
               />
             )}
@@ -639,11 +671,18 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
         </div>
       </footer>
 
-      {/* Kosmi-Style Select Media & Activities Modal */}
+      {/* Select Media & Activities Modal */}
       <MediaSelectorModal
         isOpen={mediaModalOpen}
         onClose={() => setMediaModalOpen(false)}
-        onSelectYouTube={(id, title) => loadVideo(id, title)}
+        onSelectYouTube={(id, title) => {
+          if (localMedia?.url) {
+            URL.revokeObjectURL(localMedia.url);
+            setLocalMedia(null);
+          }
+          loadVideo(id, title);
+        }}
+        onSelectLocalMedia={handleSelectLocalMedia}
         onSelectGame={(gameType, title) => loadGame(gameType, title)}
         onTriggerScreenShare={toggleScreenShare}
       />

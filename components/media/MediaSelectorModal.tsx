@@ -1,28 +1,25 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   X,
   Search,
-  Tv,
   Link as LinkIcon,
   MonitorUp,
   FolderUp,
   Sparkles,
   Gamepad2,
-  Film,
   Compass,
-  Flame,
   Globe,
   ExternalLink,
   Play,
-  CheckCircle2,
+  UploadCloud,
   Radio,
 } from "lucide-react";
 import { GameType } from "../games/CoupleGames";
 import { YouTubeBrowser } from "./YouTubeBrowser";
 
-export type MediaItemCategory = "streaming" | "games" | "activities" | "web";
+export type MediaItemCategory = "all" | "youtube" | "upload" | "games" | "web";
 
 export interface MediaItem {
   id: string;
@@ -31,7 +28,7 @@ export interface MediaItem {
   tag?: string;
   isNew?: boolean;
   isPopular?: boolean;
-  type: "youtube" | "game" | "screenshare_guide" | "direct_url";
+  type: "youtube_browser" | "youtube" | "local_upload" | "game" | "direct_url";
   youtubeId?: string;
   gameType?: GameType;
   colorClass: string;
@@ -43,33 +40,91 @@ interface MediaSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectYouTube: (videoId: string, title: string) => void;
+  onSelectLocalMedia?: (file: File) => void;
   onSelectGame: (gameType: GameType, title: string) => void;
   onTriggerScreenShare: () => void;
 }
 
 const CATALOG_ITEMS: MediaItem[] = [
-  // 1. YOUTUBE (opens embedded browser)
+  // 1. YOUTUBE (opens embedded live search & browse)
   {
     id: "youtube_main",
     title: "YouTube",
-    category: "streaming",
+    category: "youtube",
     tag: "Search & Browse",
     isPopular: true,
-    type: "youtube_browser" as MediaItem["type"],
-    colorClass: "from-red-600/20 to-red-900/30 border-red-500/30 hover:border-red-500/60",
+    type: "youtube_browser",
+    colorClass: "from-red-600/25 to-red-950/40 border-red-500/40 hover:border-red-500/70",
     logoText: "▶ YouTube",
-    description: "Search for songs, videos, and livestreams — browse and play together in real-time.",
+    description: "Search millions of songs, videos, and playlists — browse and stream together in synchronized HD.",
   },
-  // 2. COUPLE GAMES
+  // 2. LOCAL DEVICE MEDIA UPLOAD
+  {
+    id: "upload_local",
+    title: "Upload from Device",
+    category: "upload",
+    tag: "Local Media",
+    isNew: true,
+    isPopular: true,
+    type: "local_upload",
+    colorClass: "from-purple-600/25 to-indigo-950/40 border-purple-500/40 hover:border-purple-500/70",
+    logoText: "📁 Device Media",
+    description: "Pick any video (MP4, WebM, MOV, MKV) or audio (MP3, WAV) from your computer to play in synchronized cinema mode.",
+  },
+  // 3. CURATED COZY COUPLE PICKS (YouTube)
+  {
+    id: "ambient_fireplace",
+    title: "Cozy Fireplace with Soft Guitar",
+    category: "youtube",
+    tag: "Warm Ambiance",
+    type: "youtube",
+    youtubeId: "L_LUpnjgPso",
+    colorClass: "from-amber-700/20 to-orange-950/40 border-amber-500/30 hover:border-amber-500/60",
+    logoText: "🔥 Cozy Fireplace",
+    description: "Warm crackling fireplace ambiance paired with gentle fingerpicked acoustic guitar.",
+  },
+  {
+    id: "ambient_tokyo_rain",
+    title: "Rainy Night in Tokyo",
+    category: "youtube",
+    tag: "Romantic Walk",
+    type: "youtube",
+    youtubeId: "ufskJSgaLfI",
+    colorClass: "from-cyan-800/20 to-blue-950/40 border-cyan-500/30 hover:border-cyan-500/60",
+    logoText: "🌧️ Tokyo Rain",
+    description: "4K neon night walk through Shinjuku with gentle binaural rain sounds.",
+  },
+  {
+    id: "ambient_lofi",
+    title: "Lofi Hip Hop Radio",
+    category: "youtube",
+    tag: "Study & Relax",
+    type: "youtube",
+    youtubeId: "5qap5aO4i9A",
+    colorClass: "from-violet-800/20 to-purple-950/40 border-violet-500/30 hover:border-violet-500/60",
+    logoText: "🎧 Lofi Radio",
+    description: "Iconic chill beats to study, chat, or fall asleep to.",
+  },
+  {
+    id: "ambient_aurora",
+    title: "Northern Lights 4K",
+    category: "youtube",
+    tag: "Scenic Wonder",
+    type: "youtube",
+    youtubeId: "rUxyKA_-grg",
+    colorClass: "from-emerald-800/20 to-teal-950/40 border-emerald-500/30 hover:border-emerald-500/60",
+    logoText: "✨ Aurora Borealis",
+    description: "Mesmerizing 4K real-time footage of Arctic northern lights dancing across the sky.",
+  },
+  // 4. COUPLE GAMES
   {
     id: "game_heart_tac_toe",
     title: "Heart-Tac-Toe",
     category: "games",
     tag: "Couple Game",
-    isNew: true,
     type: "game",
     gameType: "heart_tac_toe",
-    colorClass: "from-rose-600/25 to-pink-900/30 border-rose-500/30 hover:border-rose-500/60",
+    colorClass: "from-rose-600/25 to-pink-950/40 border-rose-500/30 hover:border-rose-500/60",
     logoText: "💖 Heart Tic-Tac-Toe",
     description: "Intimate turn-based Tic-Tac-Toe. Play Hearts vs Sparkles with your partner.",
   },
@@ -78,10 +133,9 @@ const CATALOG_ITEMS: MediaItem[] = [
     title: "Four in a Row",
     category: "games",
     tag: "Couple Game",
-    isNew: true,
     type: "game",
     gameType: "connect_four",
-    colorClass: "from-blue-600/25 to-indigo-900/30 border-blue-500/30 hover:border-blue-500/60",
+    colorClass: "from-blue-600/25 to-indigo-950/40 border-blue-500/30 hover:border-blue-500/60",
     logoText: "🔵 Four Colors",
     description: "Classic Connect 4 arcade. Drop colored tokens and connect four to win.",
   },
@@ -93,94 +147,9 @@ const CATALOG_ITEMS: MediaItem[] = [
     isPopular: true,
     type: "game",
     gameType: "deep_talk",
-    colorClass: "from-purple-600/25 to-violet-900/30 border-purple-500/30 hover:border-purple-500/60",
+    colorClass: "from-purple-600/25 to-violet-950/40 border-purple-500/30 hover:border-purple-500/60",
     logoText: "✨ Deep Talk",
     description: "Curated romantic, fun, and vulnerable questions to spark late-night conversations.",
-  },
-  // 3. STREAMING SERVICES (Screen share launchers)
-  {
-    id: "stream_netflix",
-    title: "Netflix",
-    category: "streaming",
-    tag: "Screen Shareable",
-    type: "screenshare_guide",
-    colorClass: "from-red-950/40 to-black border-red-600/30 hover:border-red-600/60",
-    logoText: "NETFLIX",
-    description: "Stream your favorite movies & series together via low-latency screen sharing with audio.",
-  },
-  {
-    id: "stream_disney",
-    title: "Disney+",
-    category: "streaming",
-    tag: "Screen Shareable",
-    type: "screenshare_guide",
-    colorClass: "from-blue-950/40 to-sky-950/30 border-blue-600/30 hover:border-blue-600/60",
-    logoText: "Disney+",
-    description: "Watch Disney, Marvel, Pixar and Star Wars favorites synchronously.",
-  },
-  {
-    id: "stream_max",
-    title: "Max",
-    category: "streaming",
-    tag: "Screen Shareable",
-    type: "screenshare_guide",
-    colorClass: "from-indigo-950/40 to-black border-indigo-500/30 hover:border-indigo-500/60",
-    logoText: "max",
-    description: "Stream HBO Originals, blockbusters, and Warner Bros classics.",
-  },
-  {
-    id: "stream_spotify",
-    title: "Spotify",
-    category: "streaming",
-    tag: "Music Audio",
-    type: "screenshare_guide",
-    colorClass: "from-emerald-950/40 to-black border-emerald-500/30 hover:border-emerald-500/60",
-    logoText: "Spotify",
-    description: "Listen to your couple playlists and podcasts together with tab audio sharing.",
-  },
-  {
-    id: "stream_crunchyroll",
-    title: "Crunchyroll",
-    category: "streaming",
-    tag: "Anime",
-    type: "screenshare_guide",
-    colorClass: "from-amber-950/40 to-orange-950/30 border-orange-500/30 hover:border-orange-500/60",
-    logoText: "crunchyroll",
-    description: "Watch trending seasonal anime episodes together in HD.",
-  },
-  // 4. COZY AMBIENT ACTIVITIES
-  {
-    id: "ambient_fireplace",
-    title: "Cozy Fireplace with Soft Guitar",
-    category: "activities",
-    tag: "Warm Ambiance",
-    type: "youtube",
-    youtubeId: "L_LUpnjgPso",
-    colorClass: "from-amber-700/20 to-orange-900/30 border-amber-500/30 hover:border-amber-500/60",
-    logoText: "🔥 Cozy Fireplace",
-    description: "Warm crackling fireplace ambiance paired with gentle fingerpicked acoustic guitar.",
-  },
-  {
-    id: "ambient_tokyo_rain",
-    title: "Rainy Night in Tokyo",
-    category: "activities",
-    tag: "Romantic Walk",
-    type: "youtube",
-    youtubeId: "ufskJSgaLfI",
-    colorClass: "from-cyan-800/20 to-blue-900/30 border-cyan-500/30 hover:border-cyan-500/60",
-    logoText: "🌧️ Tokyo Rain",
-    description: "4K neon night walk through Shinjuku with gentle binaural rain sounds.",
-  },
-  {
-    id: "ambient_lofi",
-    title: "Lofi Hip Hop Radio",
-    category: "activities",
-    tag: "Study & Relax",
-    type: "youtube",
-    youtubeId: "5qap5aO4i9A",
-    colorClass: "from-violet-800/20 to-purple-900/30 border-violet-500/30 hover:border-violet-500/60",
-    logoText: "🎧 Lofi Radio",
-    description: "Iconic chill beats to study, chat, or fall asleep to.",
   },
 ];
 
@@ -188,15 +157,16 @@ export function MediaSelectorModal({
   isOpen,
   onClose,
   onSelectYouTube,
+  onSelectLocalMedia,
   onSelectGame,
   onTriggerScreenShare,
 }: MediaSelectorModalProps) {
-  const [activeCategory, setActiveCategory] = useState<string>("discover");
-  const [filterPill, setFilterPill] = useState<string>("all");
+  const [activeCategory, setActiveCategory] = useState<MediaItemCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [customUrl, setCustomUrl] = useState("");
-  const [screenSharePromptService, setScreenSharePromptService] = useState<string | null>(null);
   const [youtubeBrowserOpen, setYoutubeBrowserOpen] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Extract YouTube ID helper
   function extractYouTubeId(url: string): string | null {
@@ -218,18 +188,30 @@ export function MediaSelectorModal({
     }
   }
 
-  // Filter items based on Category, Filter Pill, and Search Query
+  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (files && files.length > 0 && onSelectLocalMedia) {
+      onSelectLocalMedia(files[0]);
+      onClose();
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onSelectLocalMedia) {
+      onSelectLocalMedia(e.dataTransfer.files[0]);
+      onClose();
+    }
+  }
+
+  // Filter items based on Category and Search Query
   const filteredItems = useMemo(() => {
     return CATALOG_ITEMS.filter((item) => {
       // Category filter
-      if (activeCategory === "streaming" && item.category !== "streaming") return false;
+      if (activeCategory === "youtube" && item.category !== "youtube") return false;
+      if (activeCategory === "upload" && item.category !== "upload") return false;
       if (activeCategory === "games" && item.category !== "games") return false;
-      if (activeCategory === "activities" && item.category !== "activities") return false;
-
-      // Pill filter
-      if (filterPill === "video_catalogs" && item.type !== "youtube") return false;
-      if (filterPill === "couple_apps" && item.category !== "games") return false;
-      if (filterPill === "screen_share" && item.type !== "screenshare_guide") return false;
 
       // Search query
       if (searchQuery.trim()) {
@@ -243,21 +225,33 @@ export function MediaSelectorModal({
 
       return true;
     });
-  }, [activeCategory, filterPill, searchQuery]);
+  }, [activeCategory, searchQuery]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      {/* Kosmi-Style Deep Royal Purple Container */}
+      {/* Hidden Native File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,audio/*"
+        onChange={handleFileSelected}
+        className="hidden"
+      />
+
+      {/* Main Modal Container */}
       <div className="relative w-full max-w-5xl h-[88vh] rounded-3xl bg-[#140F26] border border-purple-500/25 shadow-2xl glow-purple flex flex-col overflow-hidden text-white">
         {/* MODAL HEADER */}
-        <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between bg-[#191330]/80">
+        <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between bg-[#191330]/80 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
               <Compass className="w-4 h-4" />
             </div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Select Media</h2>
+            <div>
+              <h2 className="text-lg font-bold text-white tracking-tight">Select Media &amp; Activities</h2>
+              <p className="text-[11px] text-zinc-400">Watch YouTube or play videos directly from your device</p>
+            </div>
           </div>
 
           <button
@@ -268,25 +262,35 @@ export function MediaSelectorModal({
           </button>
         </div>
 
-        {/* TOP TOOLBAR: QUICK ICONS + SEARCH + PILLS */}
-        <div className="px-6 py-3.5 border-b border-white/[0.08] bg-[#120D22]/90 flex flex-wrap items-center justify-between gap-3">
+        {/* TOP TOOLBAR: ACTION ICONS + FILTER PILLS + SEARCH */}
+        <div className="px-6 py-3.5 border-b border-white/[0.08] bg-[#120D22]/90 flex flex-wrap items-center justify-between gap-3 shrink-0">
           {/* Quick Action Buttons (Left) */}
           <div className="flex items-center gap-2">
+            {/* Quick Upload from Device */}
             <button
-              onClick={() => {
-                onClose();
-                onTriggerScreenShare();
-              }}
-              title="Quick Screen Share"
-              className="w-10 h-10 rounded-2xl bg-white/[0.06] border border-white/10 hover:bg-purple-600/30 hover:border-purple-500/40 text-purple-300 hover:text-white flex items-center justify-center transition-all shadow-sm"
+              onClick={() => fileInputRef.current?.click()}
+              title="Upload Video or Audio from Device"
+              className="px-3 py-2 rounded-2xl bg-purple-600/25 border border-purple-500/40 hover:bg-purple-600 hover:text-white text-purple-200 flex items-center gap-2 text-xs font-semibold transition-all shadow-sm"
             >
-              <MonitorUp className="w-4 h-4" />
+              <FolderUp className="w-4 h-4" />
+              <span className="hidden sm:inline">Upload Media</span>
             </button>
 
+            {/* Quick YouTube Search */}
+            <button
+              onClick={() => setYoutubeBrowserOpen(true)}
+              title="Search & Browse YouTube"
+              className="px-3 py-2 rounded-2xl bg-red-600/20 border border-red-500/30 hover:bg-red-600 hover:text-white text-red-300 flex items-center gap-2 text-xs font-semibold transition-all shadow-sm"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span className="hidden sm:inline">YouTube</span>
+            </button>
+
+            {/* Direct URL */}
             <button
               onClick={() => setActiveCategory("web")}
-              title="Paste Direct Web / Video Link"
-              className={`w-10 h-10 rounded-2xl border transition-all flex items-center justify-center shadow-sm ${
+              title="Paste Direct Video URL"
+              className={`w-9 h-9 rounded-2xl border transition-all flex items-center justify-center shadow-sm ${
                 activeCategory === "web"
                   ? "bg-purple-600 text-white border-purple-400"
                   : "bg-white/[0.06] border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10"
@@ -295,15 +299,16 @@ export function MediaSelectorModal({
               <LinkIcon className="w-4 h-4" />
             </button>
 
+            {/* Screen Share */}
             <button
               onClick={() => {
                 onClose();
                 onTriggerScreenShare();
               }}
-              title="Share File / Window"
-              className="w-10 h-10 rounded-2xl bg-white/[0.06] border border-white/10 hover:bg-purple-600/30 hover:border-purple-500/40 text-zinc-300 hover:text-white flex items-center justify-center transition-all shadow-sm"
+              title="Screen Share Tab / Window"
+              className="w-9 h-9 rounded-2xl bg-white/[0.06] border border-white/10 hover:bg-white/10 text-zinc-300 hover:text-white flex items-center justify-center transition-all shadow-sm"
             >
-              <FolderUp className="w-4 h-4" />
+              <MonitorUp className="w-4 h-4" />
             </button>
           </div>
 
@@ -311,15 +316,15 @@ export function MediaSelectorModal({
           <div className="flex items-center gap-1.5 overflow-x-auto py-1 text-xs">
             {[
               { id: "all", label: "All" },
-              { id: "video_catalogs", label: "Video Catalogs" },
-              { id: "couple_apps", label: "Couple Games" },
-              { id: "screen_share", label: "Screen Shareable" },
+              { id: "youtube", label: "YouTube" },
+              { id: "upload", label: "Local Media" },
+              { id: "games", label: "Games" },
             ].map((pill) => (
               <button
                 key={pill.id}
-                onClick={() => setFilterPill(pill.id)}
+                onClick={() => setActiveCategory(pill.id as MediaItemCategory)}
                 className={`px-3 py-1.5 rounded-full font-medium transition-all ${
-                  filterPill === pill.id
+                  activeCategory === pill.id
                     ? "bg-purple-600 text-white shadow-md shadow-purple-900/40"
                     : "bg-white/[0.04] text-zinc-400 hover:text-white hover:bg-white/[0.08]"
                 }`}
@@ -330,13 +335,13 @@ export function MediaSelectorModal({
           </div>
 
           {/* Search Input (Right) */}
-          <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
             <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search apps and media content"
+              placeholder="Filter media..."
               className="w-full pl-9 pr-4 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-purple-500 transition-all"
             />
           </div>
@@ -345,23 +350,12 @@ export function MediaSelectorModal({
         {/* MODAL MAIN CONTENT: SIDEBAR + GRID */}
         <div className="flex-1 flex overflow-hidden">
           {/* LEFT SIDEBAR NAVIGATION */}
-          <div className="w-44 sm:w-52 border-r border-white/[0.08] p-3 flex flex-col gap-1 bg-[#100C1F]/60 shrink-0">
-            {/* YouTube Browser Quick Access */}
-            <button
-              onClick={() => setYoutubeBrowserOpen(true)}
-              className="w-full px-3.5 py-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all text-left bg-gradient-to-r from-red-600/20 to-rose-600/10 border border-red-500/30 text-red-300 hover:text-white hover:from-red-600/30 hover:to-rose-600/20 mb-2"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              <span>YouTube</span>
-            </button>
-
-            <div className="h-px bg-white/[0.06] my-1" />
-
+          <div className="w-44 sm:w-52 border-r border-white/[0.08] p-3 flex flex-col gap-1.5 bg-[#100C1F]/60 shrink-0">
             {[
-              { id: "discover", label: "Discover", icon: Sparkles },
-              { id: "streaming", label: "Streaming", icon: Film },
-              { id: "games", label: "Games", icon: Gamepad2 },
-              { id: "activities", label: "Activities", icon: Flame },
+              { id: "all", label: "All Media", icon: Sparkles },
+              { id: "youtube", label: "YouTube", icon: Play },
+              { id: "upload", label: "Local Device", icon: FolderUp },
+              { id: "games", label: "Couple Games", icon: Gamepad2 },
               { id: "web", label: "Direct URL", icon: Globe },
             ].map((cat) => {
               const Icon = cat.icon;
@@ -369,10 +363,7 @@ export function MediaSelectorModal({
               return (
                 <button
                   key={cat.id}
-                  onClick={() => {
-                    setActiveCategory(cat.id);
-                    setScreenSharePromptService(null);
-                  }}
+                  onClick={() => setActiveCategory(cat.id as MediaItemCategory)}
                   className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2.5 transition-all text-left ${
                     isActive
                       ? "bg-purple-600 text-white shadow-md shadow-purple-900/30"
@@ -427,46 +418,47 @@ export function MediaSelectorModal({
                   </button>
                 </form>
               </div>
-            ) : screenSharePromptService ? (
-              /* SCREEN SHARE LAUNCHER PROMPT */
-              <div className="max-w-lg mx-auto py-8 text-center">
-                <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-purple-600 to-rose-600 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 shadow-xl shadow-purple-900/40">
-                  <Tv className="w-8 h-8" />
-                </div>
-                <h3 className="text-xl font-bold text-white">Watch {screenSharePromptService} Together</h3>
-                <p className="text-xs text-zinc-400 mt-2 max-w-sm mx-auto leading-relaxed">
-                  To stream copyrighted content like {screenSharePromptService} with highest video & audio quality,
-                  share your browser tab directly.
-                </p>
-
-                <div className="my-6 p-4 rounded-2xl bg-white/[0.04] border border-white/10 text-left text-xs space-y-2">
-                  <div className="flex items-start gap-2 text-zinc-300">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>Open {screenSharePromptService} in a separate browser tab</span>
+            ) : activeCategory === "upload" ? (
+              /* DEDICATED LOCAL UPLOAD VIEW */
+              <div className="max-w-xl mx-auto py-6">
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingOver(true);
+                  }}
+                  onDragLeave={() => setIsDraggingOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`rounded-3xl border-2 border-dashed p-10 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center gap-4 ${
+                    isDraggingOver
+                      ? "border-purple-400 bg-purple-600/20 scale-[1.02]"
+                      : "border-purple-500/30 bg-white/[0.02] hover:border-purple-400/60 hover:bg-white/[0.05]"
+                  }`}
+                >
+                  <div className="w-16 h-16 rounded-3xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-300 shadow-xl shadow-purple-900/30">
+                    <UploadCloud className="w-8 h-8 animate-bounce" />
                   </div>
-                  <div className="flex items-start gap-2 text-zinc-300">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>Click <strong>&quot;Share Tab & Audio&quot;</strong> below and check <strong>&quot;Also share tab audio&quot;</strong></span>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Upload Media from Device</h3>
+                    <p className="text-xs text-zinc-400 mt-1 max-w-sm">
+                      Click to browse or drop any video (MP4, WebM, MOV, MKV) or audio file to play in synchronized cinema mode.
+                    </p>
                   </div>
-                </div>
-
-                <div className="flex items-center justify-center gap-3">
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
+                    {["MP4", "WebM", "MOV", "MKV", "MP3", "WAV"].map((fmt) => (
+                      <span
+                        key={fmt}
+                        className="px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-[10px] font-mono text-purple-300"
+                      >
+                        {fmt}
+                      </span>
+                    ))}
+                  </div>
                   <button
-                    onClick={() => setScreenSharePromptService(null)}
-                    className="px-5 py-2.5 rounded-xl glass-panel text-xs text-zinc-400 hover:text-white"
+                    type="button"
+                    className="mt-3 px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-all shadow-lg shadow-purple-900/40"
                   >
-                    Back to Catalog
-                  </button>
-                  <button
-                    onClick={() => {
-                      setScreenSharePromptService(null);
-                      onClose();
-                      onTriggerScreenShare();
-                    }}
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 text-white text-xs font-semibold shadow-lg shadow-purple-900/40 flex items-center gap-2"
-                  >
-                    <MonitorUp className="w-4 h-4" />
-                    <span>Start Screen Share</span>
+                    Browse Local Files
                   </button>
                 </div>
               </div>
@@ -479,14 +471,14 @@ export function MediaSelectorModal({
                     onClick={() => {
                       if (item.id === "youtube_main") {
                         setYoutubeBrowserOpen(true);
+                      } else if (item.id === "upload_local") {
+                        fileInputRef.current?.click();
                       } else if (item.type === "youtube" && item.youtubeId) {
                         onSelectYouTube(item.youtubeId, item.title);
                         onClose();
                       } else if (item.type === "game" && item.gameType) {
                         onSelectGame(item.gameType, item.title);
                         onClose();
-                      } else if (item.type === "screenshare_guide") {
-                        setScreenSharePromptService(item.title);
                       }
                     }}
                     className={`group relative rounded-3xl p-5 border bg-gradient-to-b ${item.colorClass} cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl flex flex-col justify-between min-h-[170px] overflow-hidden`}
@@ -527,7 +519,13 @@ export function MediaSelectorModal({
                     {/* Bottom Action Hint */}
                     <div className="flex items-center gap-1.5 text-[11px] font-medium text-purple-400 group-hover:text-white transition-colors z-10">
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Launch Activity</span>
+                      <span>
+                        {item.id === "upload_local"
+                          ? "Select File"
+                          : item.id === "youtube_main"
+                          ? "Open Browser"
+                          : "Launch"}
+                      </span>
                     </div>
 
                     {/* Subtle Hover Glow Effect */}

@@ -208,6 +208,29 @@ export function useWatchTogether(slug: string, currentUserId: string) {
     [broadcastWatchEvent, currentUserId]
   );
 
+  const loadLocalMedia = useCallback(
+    (title = "Local Media") => {
+      setWatchState({
+        isActive: true,
+        activeMode: "video",
+        videoId: "local",
+        videoTitle: title,
+        isPlaying: false,
+        currentTime: 0,
+        gameType: null,
+        gameTitle: "",
+      });
+
+      broadcastWatchEvent({
+        type: "LOAD_VIDEO",
+        senderId: currentUserId,
+        videoId: "local",
+        title,
+      });
+    },
+    [broadcastWatchEvent, currentUserId]
+  );
+
   const loadGame = useCallback(
     (gameType: "heart_tac_toe" | "connect_four" | "deep_talk", title = "Couple Game") => {
       setWatchState({
@@ -313,6 +336,7 @@ export function useWatchTogether(slug: string, currentUserId: string) {
   return {
     watchState,
     loadVideo,
+    loadLocalMedia,
     loadGame,
     sendGameMove,
     lastRemoteGameMove,
