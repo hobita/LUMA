@@ -288,7 +288,9 @@ export function useWebRTC({
 
   // Setup Realtime & BroadcastChannel listeners
   useEffect(() => {
-    initLocalMedia();
+    const mediaTimer = setTimeout(() => {
+      initLocalMedia();
+    }, 0);
 
     const supabase = supabaseRef.current;
     const channel = supabase.channel(`room:${slug}:webrtc`);
@@ -318,6 +320,7 @@ export function useWebRTC({
     }
 
     return () => {
+      clearTimeout(mediaTimer);
       channel.unsubscribe();
       supabase.removeChannel(channel);
       localBc?.close();
@@ -389,9 +392,8 @@ export function useWebRTC({
     }
   }, [broadcastSignaling, currentUserId, micActive, screenSharing]);
 
-  // Stop screen sharing — extracted as a ref-based function so `onended` never captures stale closures
-  const stopScreenSharingRef = useRef<() => void>(() => {});
-  stopScreenSharingRef.current = async () => {
+  // Stop screen sharing callback
+  const stopScreenSharing = useCallback(async () => {
     // Save reference before clearing
     const stoppedScreenTrack = screenTrackRef.current;
 
@@ -441,7 +443,12 @@ export function useWebRTC({
         screenSharing: false,
       },
     });
-  };
+  }, [broadcastSignaling, currentUserId, micActive, videoActive]);
+
+  const stopScreenSharingRef = useRef(stopScreenSharing);
+  useEffect(() => {
+    stopScreenSharingRef.current = stopScreenSharing;
+  }, [stopScreenSharing]);
 
   // Media Controls: Toggle Screen Sharing
   const toggleScreenShare = useCallback(async () => {

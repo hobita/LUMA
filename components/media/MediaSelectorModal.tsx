@@ -16,7 +16,6 @@ import {
   Globe,
   ExternalLink,
   Play,
-  Heart,
   CheckCircle2,
   Radio,
 } from "lucide-react";

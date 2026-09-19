@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Heart, Sparkles, RefreshCw, Trophy, ArrowRight, MessageCircleHeart, Shuffle } from "lucide-react";
+import { Heart, Sparkles, RefreshCw, Trophy, ArrowRight, MessageCircleHeart, Shuffle, X } from "lucide-react";
 
 export type GameType = "heart_tac_toe" | "connect_four" | "deep_talk";
 
 interface CoupleGamesProps {
   gameType: GameType;
-  currentUserId: string;
   userRole: "owner" | "partner";
   onSendGameMove: (payload: { action: string; data: Record<string, unknown> }) => void;
   lastRemoteMove: { action: string; data: Record<string, unknown> } | null;
@@ -40,7 +39,6 @@ const DEEP_QUESTIONS = [
 
 export function CoupleGames({
   gameType,
-  currentUserId,
   userRole,
   onSendGameMove,
   lastRemoteMove,
@@ -208,27 +206,31 @@ export function CoupleGames({
   useEffect(() => {
     if (!lastRemoteMove) return;
 
-    const { action, data } = lastRemoteMove;
+    const timer = setTimeout(() => {
+      const { action, data } = lastRemoteMove;
 
-    if (action === "TAC_TOE_MOVE" && data.board) {
-      setBoard(data.board as (string | null)[]);
-      setTurn(data.turn as "owner" | "partner");
-      if (data.winner) setWinner(data.winner as string);
-    } else if (action === "TAC_TOE_RESET") {
-      setBoard(Array(9).fill(null));
-      setTurn("owner");
-      setWinner(null);
-    } else if (action === "C4_MOVE" && data.board) {
-      setC4Board(data.board as (string | null)[][]);
-      setC4Turn(data.turn as "owner" | "partner");
-      if (data.winner) setC4Winner(data.winner as string);
-    } else if (action === "C4_RESET") {
-      setC4Board(Array(6).fill(null).map(() => Array(7).fill(null)));
-      setC4Turn("owner");
-      setC4Winner(null);
-    } else if (action === "QUESTION_CHANGE" && typeof data.index === "number") {
-      setQuestionIndex(data.index);
-    }
+      if (action === "TAC_TOE_MOVE" && data.board) {
+        setBoard(data.board as (string | null)[]);
+        setTurn(data.turn as "owner" | "partner");
+        if (data.winner) setWinner(data.winner as string);
+      } else if (action === "TAC_TOE_RESET") {
+        setBoard(Array(9).fill(null));
+        setTurn("owner");
+        setWinner(null);
+      } else if (action === "C4_MOVE" && data.board) {
+        setC4Board(data.board as (string | null)[][]);
+        setC4Turn(data.turn as "owner" | "partner");
+        if (data.winner) setC4Winner(data.winner as string);
+      } else if (action === "C4_RESET") {
+        setC4Board(Array(6).fill(null).map(() => Array(7).fill(null)));
+        setC4Turn("owner");
+        setC4Winner(null);
+      } else if (action === "QUESTION_CHANGE" && typeof data.index === "number") {
+        setQuestionIndex(data.index);
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [lastRemoteMove]);
 
   return (
@@ -281,6 +283,14 @@ export function CoupleGames({
               <span>Random</span>
             </button>
           )}
+
+          <button
+            onClick={onCloseGame}
+            className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-colors ml-1"
+            title="Exit Game"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

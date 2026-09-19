@@ -132,7 +132,7 @@ export function WatchPlayer({
         playerRef.current.destroy();
       }
 
-      const player = new window.YT.Player("luma-youtube-player", {
+      new window.YT.Player("luma-youtube-player", {
         videoId: currentVideoId,
         playerVars: {
           autoplay: 0,

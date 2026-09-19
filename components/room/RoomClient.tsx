@@ -235,7 +235,6 @@ export function RoomClient({ room, userRole, currentUserId }: RoomClientProps) {
             {watchState.activeMode === "game" && watchState.gameType ? (
               <CoupleGames
                 gameType={watchState.gameType}
-                currentUserId={currentUserId}
                 userRole={userRole}
                 onSendGameMove={sendGameMove}
                 lastRemoteMove={lastRemoteGameMove}
